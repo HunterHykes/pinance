@@ -436,14 +436,7 @@ function AddAccountDropdown({ onAddManual }) {
 function PlaidItemRow({ item, onSync, onDisconnect, syncing, accounts = [], balance = 0 }) {
   const [showConfirm, setShowConfirm]           = useState(false)
   const [showDisconnect, setShowDisconnect]      = useState(false)
-  const [menuOpen, setMenuOpen]                  = useState(false)
-  const menuRef = useRef(null)
-
-  useEffect(() => {
-    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  const { open: menuOpen, setOpen: setMenuOpen, toggle: toggleMenu, btnRef: menuRef, dropRef: menuDropRef, pos: menuPos } = useFixedMenu()
 
   const lastSynced = item.last_synced
     ? new Date(item.last_synced).toLocaleString('en-US', {
@@ -475,13 +468,14 @@ function PlaidItemRow({ item, onSync, onDisconnect, syncing, accounts = [], bala
           {isLiability ? '-' : ''}{formatCurrency(Math.abs(balance))}
         </div>
         {/* Col 6 (actions) */}
-        <div ref={menuRef} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button className="btn-ghost" style={{ padding: '4px 6px' }}
-            onClick={() => setMenuOpen(o => !o)} title="More options">
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+          <button ref={menuRef} className="btn-ghost" style={{ padding: '4px 6px' }}
+            onClick={toggleMenu} title="More options">
             <MoreVertical size={14} />
           </button>
           {menuOpen && (
-            <div className="txn-filter-dropdown" style={{ left: 'auto', right: 0 }}>
+            <div ref={menuDropRef} className="txn-filter-dropdown"
+              style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, left: 'auto' }}>
               <div className={`txn-filter-option${syncing ? ' disabled' : ''}`}
                 style={{ display: 'flex', alignItems: 'center', gap: '7px' }}
                 onClick={() => { if (!syncing) { setMenuOpen(false); setShowConfirm(true) } }}>
@@ -716,23 +710,17 @@ function DeleteAccountModal({ account, accounts = [], onConfirm, onCancel }) {
 // ── Account more menu ─────────────────────────────────────────────────────────
 
 function AccountMoreMenu({ account, onEdit, onDelete }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  const { open, setOpen, toggle, btnRef, dropRef, pos } = useFixedMenu()
 
   return (
-    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
-      <button className="btn-ghost" style={{ padding: '4px 6px' }}
-        onClick={() => setOpen(o => !o)} title="More options">
+    <div style={{ flexShrink: 0 }}>
+      <button ref={btnRef} className="btn-ghost" style={{ padding: '4px 6px' }}
+        onClick={toggle} title="More options">
         <MoreVertical size={14} />
       </button>
       {open && (
-        <div className="txn-filter-dropdown" style={{ left: 'auto', right: 0 }}>
+        <div ref={dropRef} className="txn-filter-dropdown"
+          style={{ position: 'fixed', top: pos.top, right: pos.right, left: 'auto' }}>
           <div className="txn-filter-option"
             onClick={() => { setOpen(false); onEdit(account) }}>
             Edit
@@ -829,6 +817,36 @@ function TypeGroupHeader({ label, count, balance, expanded, onToggle }) {
   )
 }
 
+// ── Fixed-position menu hook ──────────────────────────────────────────────────
+// Renders the dropdown via position:fixed so it escapes overflow:hidden parents.
+
+function useFixedMenu() {
+  const [open, setOpen]   = useState(false)
+  const [pos,  setPos]    = useState({ top: 0, right: 0 })
+  const btnRef            = useRef(null)
+  const dropRef           = useRef(null)
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right })
+    }
+    setOpen(o => !o)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => {
+      if (!btnRef.current?.contains(e.target) && !dropRef.current?.contains(e.target))
+        setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  return { open, setOpen, toggle, btnRef, dropRef, pos }
+}
+
 // ── Institution group header — same grid as data rows ────────────────────────
 
 function InstitutionGroupHeader({
@@ -837,15 +855,8 @@ function InstitutionGroupHeader({
 }) {
   const [showSync,       setShowSync]       = useState(false)
   const [showDisconnect, setShowDisconnect] = useState(false)
-  const [menuOpen,       setMenuOpen]       = useState(false)
+  const { open: menuOpen, setOpen: setMenuOpen, toggle: toggleMenu, btnRef: menuRef, dropRef: menuDropRef, pos: menuPos } = useFixedMenu()
   const color = instPref.color || 'var(--text-tertiary)'
-  const menuRef = useRef(null)
-
-  useEffect(() => {
-    const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
 
   const lastSynced = item?.last_synced
     ? new Date(item.last_synced).toLocaleString('en-US', {
@@ -860,7 +871,7 @@ function InstitutionGroupHeader({
   return (
     <>
       <div className="acct-tbl-row acct-group-row"
-           style={menuOpen ? { padding: '5px 1.5rem', position: 'relative', zIndex: 10 } : { padding: '5px 1.5rem' }}
+           style={{ padding: '5px 1.5rem' }}
            onClick={onToggle}>
         {/* Name + subtext — spans cols 1-2 in institution view, 1-5 in type view */}
         <div style={{ gridColumn: hideInstitution ? '1 / 3' : '1 / 5', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -912,13 +923,14 @@ function InstitutionGroupHeader({
           {count > 0 ? (isLiability ? '-' : '') + formatCurrency(Math.abs(balance)) : '—'}
         </div>
         {/* Three-dot — col 6, aligns with child rows; Sync is inside the menu */}
-        <div ref={menuRef} style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
-          <button className="btn-ghost" style={{ padding: '4px 6px' }}
-            onClick={() => setMenuOpen(o => !o)}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
+          <button ref={menuRef} className="btn-ghost" style={{ padding: '4px 6px' }}
+            onClick={toggleMenu}>
             <MoreVertical size={14} />
           </button>
           {menuOpen && (
-            <div className="txn-filter-dropdown" style={{ left: 'auto', right: 0 }}>
+            <div ref={menuDropRef} className="txn-filter-dropdown"
+              style={{ position: 'fixed', top: menuPos.top, right: menuPos.right, left: 'auto' }}>
               {onEditInstitution && (
                 <div className="txn-filter-option"
                   onClick={() => { setMenuOpen(false); onEditInstitution() }}>
