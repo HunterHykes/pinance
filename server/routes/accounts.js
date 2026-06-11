@@ -86,9 +86,9 @@ router.delete('/:id', (req, res) => {
       }
       // Nullify any remaining FK references on this account before deleting it
       db.prepare('UPDATE transactions         SET account_id = NULL WHERE account_id = ? AND user_id = ?').run(id, userId);
-      db.prepare('UPDATE subscription_charges SET account_id = NULL WHERE account_id = ?').run(id);
+      db.prepare('UPDATE bill_charges SET account_id = NULL WHERE account_id = ?').run(id);
       db.prepare('UPDATE income_schedules     SET account_id = NULL WHERE account_id = ?').run(id);
-      db.prepare('UPDATE subscriptions        SET account_id = NULL WHERE account_id = ?').run(id);
+      db.prepare('UPDATE bills        SET account_id = NULL WHERE account_id = ?').run(id);
       db.prepare('UPDATE income_sources       SET account_id = NULL WHERE account_id = ?').run(id);
       db.prepare('DELETE FROM accounts WHERE id = ? AND user_id = ? AND is_manual = 1').run(id, userId);
     })();
