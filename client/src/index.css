@@ -317,6 +317,56 @@ input::placeholder {
   color: var(--text-secondary);
 }
 
+/* ── DateInput — single date picker styled like DateRangeTrigger ─────────────*/
+.date-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 12px;
+  min-height: 36px;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  transition: border-color 0.15s;
+}
+.date-input-wrap:hover { border-color: var(--text-tertiary); }
+.date-input-val {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.date-input-placeholder {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+
+/* ── CurrencyInput — no spinner arrows ───────────────────────────────────────*/
+/* Also suppress spinners on any remaining type=number money inputs */
+.currency-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.currency-symbol {
+  position: absolute;
+  left: 11px;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+}
+.currency-input { font-variant-numeric: tabular-nums; padding-left: 22px; width: 100%; }
+input[type=number].no-spinner,
+.currency-input { -moz-appearance: textfield; }
+input[type=number].no-spinner::-webkit-inner-spin-button,
+input[type=number].no-spinner::-webkit-outer-spin-button,
+.currency-input::-webkit-inner-spin-button,
+.currency-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
 /* Date range / month selector in page header */
 .page-date-range {
   display: flex;
@@ -1687,6 +1737,38 @@ input::placeholder {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+
+/* ── SingleDatePicker overrides ──────────────────────────────────────────────*/
+/* Narrower popover — only needs to fit 7 day columns, no month label col */
+.sdp-popover {
+  width: 260px;
+  padding-right: 16px;
+}
+/* Remove the month-label gutter column used by DateRangePicker */
+.sdp-dow-header {
+  padding-left: 0;
+}
+.sdp-dow-header .drp-day-label {
+  flex: 1;
+}
+/* 7-column grid, no month label column */
+.sdp-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-top: 4px;
+}
+.sdp-day {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+}
+/* Today indicator — subtle ring */
+.sdp-day--today {
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* ── Modal sections ──────────────────────────────────────────────────────── */

@@ -8,7 +8,7 @@ import { getLinkToken, exchangeToken, syncPlaid, getPlaidItems, disconnectPlaidI
 import { formatCurrency } from '../utils'
 import { useAccountPrefs, useSaveAccountPref, useInstitutionPrefs, useSaveInstitutionPref, useAccountSnapshots, useSaveAccountSnapshot, useDeleteAccountSnapshot } from '../hooks/useAccountPrefs'
 import ColorPicker from '../components/ColorPicker'
-
+import { CurrencyInput } from '../components/FormControls'
 const ACCOUNT_TYPES = ['Checking', 'Savings', 'Investment', 'Retirement', 'Credit card', 'Other']
 
 // Default colors per account type — used when no custom color is set
@@ -123,7 +123,7 @@ function AccountEditModal({ account, pref = {}, onClose, onSavePref, onSaveAccou
                     </div>
                     <div className="form-group">
                       <label>Current balance ($)</label>
-                      <input type="number" value={balance} onChange={e => setBalance(e.target.value)} step="0.01" required />
+                      <CurrencyInput value={balance} onChange={setBalance} required />
                     </div>
                   </div>
                   <div className="form-group">
@@ -144,7 +144,7 @@ function AccountEditModal({ account, pref = {}, onClose, onSavePref, onSaveAccou
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label style={{ fontSize: '11px' }}>Balance ($)</label>
-                      <input type="number" value={snapBalance} onChange={e => setSnapBalance(e.target.value)} placeholder="0.00" step="0.01" />
+                      <CurrencyInput value={snapBalance} onChange={setSnapBalance} placeholder="0.00" />
                     </div>
                     <button type="button" className="btn-primary" style={{ fontSize: '12px', padding: '7px 12px' }}
                       onClick={handleAddSnapshot} disabled={!snapDate || snapBalance === '' || snapSaving}>
@@ -542,7 +542,7 @@ function AccountModal({ initial, onClose, onSave, loading }) {
           </div>
           <div className="form-group">
             <label>Current balance ($)</label>
-            <input type="number" value={form.balance} onChange={e => set('balance', e.target.value)} placeholder="0.00" step="0.01" required />
+            <CurrencyInput value={form.balance} onChange={v => set('balance', v)} placeholder="0.00" required />
           </div>
           <div className="modal-btns">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
@@ -1289,7 +1289,6 @@ function Accounts() {
                 balance={group.accounts.reduce((s, a) => s + a.balance, 0)}
                 expanded={isExpanded(group.key)}
                 onToggle={() => toggleGroup(group.key)}
-                onSync={handleSync}
                 onDisconnect={handleDisconnectItem}
                 syncing={group.item ? syncingId === group.item.id : false}
                 hideInstitution accounts={accounts}

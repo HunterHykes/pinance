@@ -13,6 +13,7 @@ import ColorPicker from '../components/ColorPicker'
 import ChangeIntentModal from '../components/ChangeIntentModal'
 import RecurringRulePanel from '../components/RecurringRulePanel'
 import { MonthPicker } from '../components/DateRangePicker'
+import { CurrencyInput, DateInput } from '../components/FormControls'
 
 const FREQUENCIES = [
   { value: 'weekly',        label: 'Weekly' },
@@ -47,11 +48,6 @@ function incomeOccursInMonth(anchorDate, frequency, customDays, targetMonth) {
 function deriveAnchorDate(frequency, startedOn) { return startedOn||new Date().toISOString().slice(0,10) }
 const defaultSchedule=(startedOn)=>({label:'',amount:'',frequency:'biweekly',custom_days:'',anchor_date:deriveAnchorDate('biweekly',startedOn),effective_from:startedOn||new Date().toISOString().slice(0,10)})
 
-function CurrencyInput({ value, onChange, placeholder, required, style }) {
-  const [focused,setFocused]=useState(false)
-  const display=!focused&&value!==''&&!isNaN(parseFloat(value))?parseFloat(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):value
-  return <input type="text" inputMode="decimal" value={display} placeholder={placeholder} required={required} style={style} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onChange={e=>{const raw=e.target.value.replace(/[^0-9.]/g,'');const p=raw.split('.');onChange(p.length>2?p[0]+'.'+p.slice(1).join(''):raw)}} />
-}
 
 function ScheduleRuleRow({ schedule, index, onChange, onRemove, canRemove, started_on, accounts, allSchedules, siblingSchedules }) {
   const [showHist,setShowHist]=useState(false)
@@ -69,11 +65,11 @@ function ScheduleRuleRow({ schedule, index, onChange, onRemove, canRemove, start
           <input type="text" value={schedule.label} onChange={e=>set('label',e.target.value)} placeholder="Label" required style={{fontSize:'13px',borderColor:isDupLabel?'var(--red)':undefined,outline:isDupLabel?'1px solid var(--red)':undefined,width:'100%'}} />
           {isDupLabel&&<span style={{position:'absolute',top:'100%',left:0,fontSize:'10px',color:'var(--red)',whiteSpace:'nowrap',marginTop:'1px'}}>Duplicate label</span>}
         </div>
-        <input type="date" value={schedule.anchor_date||started_on||''} onChange={e=>set('anchor_date',e.target.value)} style={{fontSize:'13px'}} />
+        <DateInput value={schedule.anchor_date||started_on||''} onChange={v=>set('anchor_date',v)} />
         <select value={schedule.frequency} onChange={e=>handleFreqChange(e.target.value)} style={{fontSize:'13px'}}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select>
         <select value={schedule.account_id||''} onChange={e=>set('account_id',e.target.value||null)} style={{fontSize:'13px'}}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
         <div style={{display:'flex',justifyContent:'center'}}>{isExisting&&itemHist.length>1&&<button type="button" className={`btn-trend${showHist?' btn-trend--active':''}`} onClick={()=>setShowHist(h=>!h)} title="History"><TrendingUp size={12}/></button>}</div>
-        <CurrencyInput value={schedule.amount} onChange={v=>set('amount',v)} placeholder="0.00" required style={{fontSize:'13px'}} />
+        <CurrencyInput value={schedule.amount} onChange={v=>set('amount',v)} placeholder="0.00" required inputStyle={{fontSize:'13px'}} />
         <div style={{display:'flex',justifyContent:'center'}}>{canRemove&&<button type="button" className="btn-icon-remove" onClick={()=>onRemove(index)} title="Remove"><span style={{fontSize:'16px',lineHeight:1}}>−</span></button>}</div>
       </div>
       {needsCustomDays&&(<div style={{padding:'4px 0 8px',fontSize:'12px',color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:'8px',borderBottom:'1px solid var(--border)'}}><span style={{color:'var(--text-tertiary)'}}>{schedule.frequency==='twice_monthly'?'Pay days:':'Days of month:'}</span><input type="text" value={schedule.frequency==='twice_monthly'?(schedule.custom_days||'1,15'):(schedule.custom_days||'')} onChange={e=>set('custom_days',e.target.value)} placeholder="e.g. 1, 15" style={{width:'120px',fontSize:'13px'}} /></div>)}
@@ -174,7 +170,7 @@ function IncomeModal({ initial, categories, accounts, onClose, onSave, loading }
               <div className="modal-section">
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
                   <div className="form-group"><label>Status</label><select value={status} onChange={e=>setStatus(e.target.value)}><option value="active">Active</option><option value="paused">Paused</option><option value="stopped">Stopped</option></select></div>
-                  <div className="form-group"><label>Started on</label><input type="date" value={startedOn} onChange={e=>handleStartedOnChange(e.target.value)} required /></div>
+                  <div className="form-group"><label>Started on</label><DateInput value={startedOn} onChange={handleStartedOnChange} required /></div>
                 </div>
 
                 {activeTab==='details'&&(
@@ -270,7 +266,7 @@ function IncomeScheduleModal({ schedule, src, accounts, onClose, onSave, saving 
           <form id="sched-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:'12px'}}>
             <div className="form-group"><label>Label</label><input type="text" value={label} onChange={e=>setLabel(e.target.value)} required /></div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
-              <div className="form-group"><label>Started on</label><input type="date" value={anchorDate} onChange={e=>setAnchorDate(e.target.value)} required /></div>
+              <div className="form-group"><label>Started on</label><DateInput value={anchorDate} onChange={setAnchorDate} required /></div>
               <div className="form-group"><label>Frequency</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>

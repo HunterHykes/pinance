@@ -20,6 +20,7 @@ import { useIncomeSources, useUpdateIncomeSource } from '../hooks/useIncome'
 import { formatCurrency, currentMonth, buildCategoryTree, sumSpent, sumLimit, resolveColor } from '../utils'
 import TreeSelect from '../components/TreeSelect'
 import ColorPicker from '../components/ColorPicker'
+import { CurrencyInput } from '../components/FormControls'
 import ChangeIntentModal from '../components/ChangeIntentModal'
 import { MonthPicker } from '../components/DateRangePicker'
 
@@ -59,7 +60,7 @@ function nextOccurrenceMonth(anchorDate, frequency, fromMonth) {
 
 const defaultForm = {
   category:      '',
-  monthly_limit: '',
+  monthly_limit: '0',
   parent_id:     null,
   color:         null,
 }
@@ -72,7 +73,7 @@ function CategoryModal({ initial, categories, onClose, onSave, loading, title })
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    onSave({ ...form, monthly_limit: isBill ? form.monthly_limit : parseFloat(form.monthly_limit), parent_id: form.parent_id ?? null })
+    onSave({ ...form, monthly_limit: isBill ? form.monthly_limit : (parseFloat(form.monthly_limit) || 0), parent_id: form.parent_id ?? null })
   }
 
   function getDescendantIds(id, allCats) {
@@ -109,7 +110,7 @@ function CategoryModal({ initial, categories, onClose, onSave, loading, title })
           <div className="form-group">
             <label>Monthly limit ($)</label>
             {(!hasChildren && !isBill) ? (
-              <input type="number" value={form.monthly_limit} onChange={e => set('monthly_limit', e.target.value)} placeholder="0.00" step="0.01" min="0" required />
+              <CurrencyInput value={form.monthly_limit} onChange={v => set('monthly_limit', v)} placeholder="0.00" />
             ) : (
               <div style={{ fontSize: '13px', color: 'var(--text-secondary)', padding: '8px 11px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
                 {isBill ? 'Auto-calculated from Bills' : 'Auto-calculated from subcategories'}
@@ -280,6 +281,7 @@ function BudgetRow({ node, allCategories, depth = 0, onEdit, onDelete, barColor 
                   type="number"
                   step="0.01"
                   min="0"
+                  className="no-spinner"
                   value={inlineEdit.value}
                   onChange={e => onInlineEditChange(e.target.value)}
                   onBlur={() => onInlineEditCommit()}

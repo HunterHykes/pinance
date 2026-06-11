@@ -6,6 +6,9 @@ import { useLiabilities, useCreateLiability, useUpdateLiability, useDeleteLiabil
 import { formatCurrency } from '../utils'
 import RowMoreMenu from '../components/RowMoreMenu'
 import LiabilityModal from '../components/LiabilityModal'
+import { CurrencyInput } from '../components/FormControls'
+import { useQuery } from '@tanstack/react-query'
+import { getBudget } from '../api'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -380,7 +383,7 @@ function AssetModal({ initial, defaultType, allTypes, onClose, onSave, loading }
             </div>
             <div className="form-group">
               <label>Current value ($)</label>
-              <input type="number" value={form.value} onChange={e => set('value', e.target.value)} placeholder="0.00" step="0.01" min="0" required />
+              <CurrencyInput value={form.value} onChange={v => set('value', v)} placeholder="0.00" required />
             </div>
           </div>
           <div className="form-group">
@@ -439,6 +442,10 @@ export default function Assets() {
 
   const { data: assets      = [], isLoading: aLoading } = useAssets()
   const { data: liabilities = [], isLoading: lLoading } = useLiabilities()
+  const { data: budgetRows  = [] } = useQuery({
+    queryKey: ['budget', new Date().toISOString().slice(0, 7)],
+    queryFn:  () => getBudget({ month: new Date().toISOString().slice(0, 7) }).then(r => r.data),
+  })
   const createAsset     = useCreateAsset()
   const updateAsset     = useUpdateAsset()
   const deleteAsset     = useDeleteAsset()
@@ -648,7 +655,7 @@ export default function Assets() {
           initial={editingLiability}
           defaultType={defaultLiabType}
           assets={assets}
-          categories={[]}
+          categories={budgetRows}
           onClose={() => { setShowLiabilityModal(false); setEditingLiability(null); setDefaultLiabType(null) }}
           onSave={handleSaveLiability}
           loading={createLiability.isPending || updateLiability.isPending}

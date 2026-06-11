@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { ChevronRight } from 'lucide-react'
 import TreeSelect from './TreeSelect'
 import { formatCurrency } from '../utils'
+import { CurrencyInput, DateInput } from './FormControls'
 
 const LIABILITY_TYPES = ['Mortgage', 'Auto Loan', 'Student Loan', 'Personal Loan', 'Line of Credit', 'Other']
 
@@ -105,8 +106,8 @@ export default function LiabilityModal({ initial, defaultType, assets = [], cate
                   {formatCurrency(parseFloat(form.balance) || 0)}
                 </div>
               ) : (
-                <input type="number" value={form.balance} onChange={e => set('balance', e.target.value)}
-                  placeholder="0.00" step="0.01" min="0" required />
+                <CurrencyInput value={form.balance} onChange={v => set('balance', v)}
+                  placeholder="0.00" required />
               )}
             </div>
           </div>
@@ -148,19 +149,19 @@ export default function LiabilityModal({ initial, defaultType, assets = [], cate
               <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)' }}>
                 <div className="form-group">
                   <label>Original principal ($)</label>
-                  <input type="number" value={form.original_principal} onChange={e => set('original_principal', e.target.value)} placeholder="0.00" step="0.01" min="0" />
+                  <CurrencyInput value={form.original_principal} onChange={v => set('original_principal', v)} placeholder="0.00" />
                 </div>
                 <div className="form-group">
                   <label>Interest rate (APR %)</label>
-                  <input type="number" value={form.interest_rate} onChange={e => set('interest_rate', e.target.value)} placeholder="e.g. 6.5" step="0.001" min="0" max="100" />
+                  <input type="number" value={form.interest_rate} onChange={e => set('interest_rate', e.target.value)} placeholder="e.g. 6.5" step="0.001" min="0" max="100" className="no-spinner" />
                 </div>
                 <div className="form-group">
                   <label>Loan term (months)</label>
-                  <input type="number" value={form.loan_term_months} onChange={e => set('loan_term_months', e.target.value)} placeholder="360 = 30 yr" min="1" />
+                  <input type="number" value={form.loan_term_months} onChange={e => set('loan_term_months', e.target.value)} placeholder="360 = 30 yr" min="1" className="no-spinner" />
                 </div>
                 <div className="form-group">
                   <label>Origination date</label>
-                  <input type="date" value={form.origination_date} onChange={e => set('origination_date', e.target.value)} />
+                  <DateInput value={form.origination_date} onChange={v => set('origination_date', v)} />
                 </div>
                 <div className="form-group" style={{ gridColumn: '1 / 3' }}>
                   <label>
@@ -172,8 +173,8 @@ export default function LiabilityModal({ initial, defaultType, assets = [], cate
                       </span>
                     )}
                   </label>
-                  <input type="number" value={form.monthly_payment} onChange={e => set('monthly_payment', e.target.value)}
-                    placeholder={suggestedPayment ? `Calculated: $${suggestedPayment}` : 'Optional'} step="0.01" min="0" />
+                  <CurrencyInput value={form.monthly_payment} onChange={v => set('monthly_payment', v)}
+                    placeholder={suggestedPayment ? `Calculated: $${suggestedPayment}` : 'Optional'} />
                 </div>
               </div>
             )}

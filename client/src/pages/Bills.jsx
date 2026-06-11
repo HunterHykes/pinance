@@ -13,6 +13,7 @@ import ColorPicker from '../components/ColorPicker'
 import ChangeIntentModal from '../components/ChangeIntentModal'
 import RecurringRulePanel from '../components/RecurringRulePanel'
 import { MonthPicker } from '../components/DateRangePicker'
+import { CurrencyInput, DateInput } from '../components/FormControls'
 
 const FREQUENCIES = [
   { value: 'monthly',     label: 'Monthly' },
@@ -50,17 +51,6 @@ function chargeOccursInMonth(anchorDate, frequency, targetMonth) {
   }
 }
 
-function CurrencyInput({ value, onChange, placeholder, required, style }) {
-  const [focused, setFocused] = useState(false)
-  const display = !focused && value !== '' && !isNaN(parseFloat(value))
-    ? parseFloat(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value
-  return (
-    <input type="text" inputMode="decimal" value={display} placeholder={placeholder} required={required} style={style}
-      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-      onChange={e => { const raw = e.target.value.replace(/[^0-9.]/g,''); const p=raw.split('.'); onChange(p.length>2?p[0]+'.'+p.slice(1).join(''):raw) }} />
-  )
-}
-
 const defaultCharge = (startedOn) => ({
   label: '', amount: '', frequency: 'monthly',
   anchor_date: startedOn || new Date().toISOString().slice(0,10),
@@ -82,11 +72,11 @@ function ChargeRuleRow({ charge, index, onChange, onRemove, canRemove, started_o
           <input type="text" value={charge.label} onChange={e=>set('label',e.target.value)} placeholder="Label" required style={{fontSize:'13px',borderColor:isDupLabel?'var(--red)':undefined,outline:isDupLabel?'1px solid var(--red)':undefined,width:'100%'}} />
           {isDupLabel&&<span style={{position:'absolute',top:'100%',left:0,fontSize:'10px',color:'var(--red)',whiteSpace:'nowrap',marginTop:'1px'}}>Duplicate label</span>}
         </div>
-        <input type="date" value={charge.anchor_date||started_on||''} onChange={e=>set('anchor_date',e.target.value)} style={{fontSize:'13px'}} />
+        <DateInput value={charge.anchor_date||started_on||''} onChange={v=>set('anchor_date',v)} />
         <select value={charge.frequency} onChange={e=>handleFreqChange(e.target.value)} style={{fontSize:'13px'}}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select>
         <select value={charge.account_id||''} onChange={e=>set('account_id',e.target.value||null)} style={{fontSize:'13px'}}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
         <div style={{display:'flex',justifyContent:'center'}}>{isExisting&&itemHist.length>1&&<button type="button" className={`btn-trend${showHist?' btn-trend--active':''}`} onClick={()=>setShowHist(h=>!h)} title="History"><TrendingUp size={12}/></button>}</div>
-        <CurrencyInput value={charge.amount} onChange={v=>set('amount',v)} placeholder="0.00" required style={{fontSize:'13px'}} />
+        <CurrencyInput value={charge.amount} onChange={v=>set('amount',v)} placeholder="0.00" required inputStyle={{fontSize:'13px'}} />
         <div style={{display:'flex',justifyContent:'center'}}>{canRemove&&<button type="button" className="btn-icon-remove" onClick={()=>onRemove(index)} title="Remove"><span style={{fontSize:'16px',lineHeight:1}}>−</span></button>}</div>
       </div>
       {showHist&&itemHist.length>0&&(
@@ -233,10 +223,10 @@ function BillModal({ initial, categories, accounts, onClose, onSave, loading }) 
               <div className="modal-section">
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px'}}>
                   <div className="form-group"><label>Status</label><select value={status} onChange={e=>setStatus(e.target.value)}><option value="active">Active</option><option value="paused">Paused</option><option value="cancelled">Cancelled</option></select></div>
-                  <div className="form-group"><label>Started on</label><input type="date" value={startedOn} onChange={e=>handleStartedOnChange(e.target.value)} required /></div>
+                  <div className="form-group"><label>Started on</label><DateInput value={startedOn} onChange={handleStartedOnChange} required /></div>
                   <div className="form-group"><label>Account <span style={{color:'var(--text-tertiary)',fontWeight:400}}>(optional)</span></label><select value={accountId} onChange={e=>handleAccountChange(e.target.value)}><option value="">No account</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
                 </div>
-                {status==='paused'&&(<div className="form-group" style={{maxWidth:'200px'}}><label>Pause until</label><input type="date" value={pauseUntil} onChange={e=>setPauseUntil(e.target.value)} /></div>)}
+                {status==='paused'&&(<div className="form-group" style={{maxWidth:'200px'}}><label>Pause until</label><DateInput value={pauseUntil} onChange={setPauseUntil} /></div>)}
 
                 {activeTab==='details'&&(
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'4px'}}>
@@ -328,7 +318,7 @@ function BillChargeModal({ charge, sub, accounts, onClose, onSave, saving }) {
   const handleSubmit=(e)=>{e.preventDefault();const uc={id:charge.id,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,effective_from:charge.effective_from,account_id:accountId||null};const oc=sub.charges.filter(c=>!c.effective_to&&c.id!==charge.id).map(c=>({id:c.id,label:c.label,amount:c.amount,frequency:c.frequency,anchor_date:c.anchor_date,effective_from:c.effective_from,account_id:c.account_id||null}));const fd={name:sub.name,description:sub.description||sub.notes||'',parent_category_id:sub.parent_category_id,color:sub.color,account_id:sub.account_id,status:sub.status,pause_until:sub.pause_until,started_on:sub.started_on,notes:sub.notes||'',charges:[...oc,uc]};if(isDirty){setPendingForm({formData:fd,updatedCharge:uc});setIntentModal(true)}else onClose()}
   const handleIntentResolve=(r)=>{if(!r){setIntentModal(false);return};onSave({...pendingForm.formData,scope:'this_and_future',_intents:[{charge_id:charge.id,...r}]})}
   return (
-    <>{<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!intentModal&&onClose()}><div className="modal" style={{maxWidth:'480px'}}><h3 className="modal-title">Edit charge rule</h3><p style={{fontSize:'12px',color:'var(--text-tertiary)',marginTop:'-4px',marginBottom:'12px'}}>{sub.name}</p><form id="charge-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:'12px'}}><div className="form-group"><label>Label</label><input type="text" value={label} onChange={e=>setLabel(e.target.value)} required /></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}><div className="form-group"><label>Started on</label><input type="date" value={anchorDate} onChange={e=>setAnchorDate(e.target.value)} required /></div><div className="form-group"><label>Frequency</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}><div className="form-group"><label>Account</label><select value={accountId} onChange={e=>setAccountId(e.target.value)}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div><div className="form-group"><label>Amount</label><CurrencyInput value={amount} onChange={setAmount} placeholder="0.00" required /></div></div><div className="modal-btns"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" form="charge-form" className="btn-primary" disabled={saving}>{saving?'Saving...':'Save'}</button></div></form></div></div>}
+    <>{<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!intentModal&&onClose()}><div className="modal" style={{maxWidth:'480px'}}><h3 className="modal-title">Edit charge rule</h3><p style={{fontSize:'12px',color:'var(--text-tertiary)',marginTop:'-4px',marginBottom:'12px'}}>{sub.name}</p><form id="charge-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:'12px'}}><div className="form-group"><label>Label</label><input type="text" value={label} onChange={e=>setLabel(e.target.value)} required /></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}><div className="form-group"><label>Started on</label><DateInput value={anchorDate} onChange={setAnchorDate} required /></div><div className="form-group"><label>Frequency</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}><div className="form-group"><label>Account</label><select value={accountId} onChange={e=>setAccountId(e.target.value)}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div><div className="form-group"><label>Amount</label><CurrencyInput value={amount} onChange={setAmount} placeholder="0.00" required /></div></div><div className="modal-btns"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" form="charge-form" className="btn-primary" disabled={saving}>{saving?'Saving...':'Save'}</button></div></form></div></div>}
     {intentModal&&<ChangeIntentModal row={{...charge,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,account_id:accountId||null}} original={charge} rowIndex={0} totalDirty={1} onResolve={handleIntentResolve} />}</>
   )
 }
