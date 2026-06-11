@@ -14,6 +14,7 @@ import ChangeIntentModal from '../components/ChangeIntentModal'
 import RecurringRulePanel from '../components/RecurringRulePanel'
 import { MonthPicker } from '../components/DateRangePicker'
 import { CurrencyInput, DateInput } from '../components/FormControls'
+import IncomeModal from '../components/IncomeModal'
 
 const FREQUENCIES = [
   { value: 'weekly',        label: 'Weekly' },
@@ -74,137 +75,6 @@ function ScheduleRuleRow({ schedule, index, onChange, onRemove, canRemove, start
       </div>
       {needsCustomDays&&(<div style={{padding:'4px 0 8px',fontSize:'12px',color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:'8px',borderBottom:'1px solid var(--border)'}}><span style={{color:'var(--text-tertiary)'}}>{schedule.frequency==='twice_monthly'?'Pay days:':'Days of month:'}</span><input type="text" value={schedule.frequency==='twice_monthly'?(schedule.custom_days||'1,15'):(schedule.custom_days||'')} onChange={e=>set('custom_days',e.target.value)} placeholder="e.g. 1, 15" style={{width:'120px',fontSize:'13px'}} /></div>)}
       {showHist&&itemHist.length>0&&(<div style={{padding:'4px 0 8px',borderBottom:'1px solid var(--border)'}}>{[...itemHist].sort((a,b)=>b.effective_from.localeCompare(a.effective_from)).map(s=><div key={s.id} className="sub-history-row"><span style={{color:s.effective_to?'var(--text-tertiary)':'var(--text)'}}>{s.label} — {formatCurrency(s.amount)} / {freqLabel(s.frequency)}</span><span style={{fontSize:'11px',color:'var(--text-tertiary)'}}>{new Date(s.effective_from+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}{s.effective_to?` → ${new Date(s.effective_to+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`:' → present'}</span></div>)}</div>)}
-    </>
-  )
-}
-
-function IncomeModal({ initial, categories, accounts, onClose, onSave, loading }) {
-  const [name,setName]=useState(initial?.name||''),[description,setDescription]=useState(initial?.description||initial?.notes||''),[parentCatId,setParentCatId]=useState(initial?.parent_category_id||null),[color,setColor]=useState(initial?.color||null),[status,setStatus]=useState(initial?.status||'active'),[startedOn,setStartedOn]=useState(initial?.started_on||new Date().toISOString().slice(0,10))
-
-  const initialSchedules=initial?.schedules?.filter(s=>!s.effective_to)||[]
-  const [activeTab,setActiveTab]=useState(initialSchedules.length>1?'split':'details')
-  const [schedules,setSchedules]=useState(()=>initialSchedules.length>0?initialSchedules.map(s=>({...s,amount:String(s.amount),_original:{...s,amount:String(s.amount)}})):[defaultSchedule(initial?.started_on)])
-
-  const firstSched=initialSchedules[0]
-  const [singleAmount,setSingleAmount]=useState(firstSched?String(firstSched.amount):'')
-  const [singleFrequency,setSingleFrequency]=useState(firstSched?.frequency||'biweekly')
-  const [singleAnchor,setSingleAnchor]=useState(firstSched?.anchor_date||'')
-  const [singleCustomDays,setSingleCustomDays]=useState(firstSched?.custom_days||'')
-
-  const [intentQueue,setIntentQueue]=useState(null),[intentIndex,setIntentIndex]=useState(0),[resolvedIntents,setResolved]=useState([]),[pendingForm,setPendingForm]=useState(null)
-
-  const parentCats=categories.filter(c=>!c.is_subscription&&!c.is_income)
-  const parentCatName=parentCats.find(c=>c.id===parentCatId)?.category||''
-  const handleParentChange=(n)=>{const cat=parentCats.find(c=>c.category===n);setParentCatId(cat?.id||null)}
-
-  const handleStartedOnChange=(newDate)=>{setStartedOn(newDate);setSingleAnchor(a=>a===startedOn?newDate:a);setSchedules(ss=>ss.map(s=>({...s,anchor_date:s.anchor_date===startedOn?deriveAnchorDate(s.frequency,newDate):s.anchor_date,effective_from:s.effective_from===startedOn?newDate:s.effective_from})))}
-
-  const updateSchedule=(i,val)=>setSchedules(ss=>ss.map((s,idx)=>{if(idx!==i)return s;const u={...val};if(s._original){const o=s._original;u._dirty=String(u.amount)!==String(o.amount)||u.frequency!==o.frequency||u.anchor_date!==o.anchor_date||(u.account_id||null)!==(o.account_id||null)||(u.label||'')!==(o.label||'')}return u}))
-  const addSchedule=()=>setSchedules(ss=>[...ss,defaultSchedule(startedOn)])
-  const removeSchedule=(i)=>setSchedules(ss=>ss.filter((_,idx)=>idx!==i))
-
-  const handleTabChange=(tab)=>{
-    if(tab==='split'&&activeTab==='details'){setSchedules(ss=>ss.length===1?[{...ss[0],label:ss[0].label||(name.trim()||'Income'),amount:singleAmount||ss[0].amount,frequency:singleFrequency,anchor_date:singleAnchor||startedOn,custom_days:singleCustomDays||null}]:ss)}
-    if(tab==='details'&&activeTab==='split'&&schedules.length>0){setSingleAmount(schedules[0].amount);setSingleFrequency(schedules[0].frequency);setSingleAnchor(schedules[0].anchor_date);setSingleCustomDays(schedules[0].custom_days||'')}
-    setActiveTab(tab)
-  }
-
-  const dirtyCount=schedules.filter(s=>s.id&&s._dirty).length
-  const allSchedules=initial?.schedules||[]
-  const needsCustomDays=singleFrequency==='custom_days'||singleFrequency==='twice_monthly'
-
-  const detailsMonthly=useMemo(()=>{const amt=parseFloat(singleAmount);if(!amt||isNaN(amt))return null;return amt*occurrencesPerMonth(singleFrequency,singleCustomDays)},[singleAmount,singleFrequency,singleCustomDays])
-
-  const handleSubmit=(e)=>{
-    e.preventDefault()
-    let finalSchedules
-    if(activeTab==='details'){
-      const eid=initialSchedules[0]?.id
-      finalSchedules=[{...(eid?{id:eid}:{}),label:name.trim()||'Income',amount:parseFloat(singleAmount),frequency:singleFrequency,anchor_date:singleAnchor||startedOn,effective_from:initialSchedules[0]?.effective_from||startedOn,account_id:null,custom_days:singleCustomDays||null,_original:initialSchedules[0]?{...initialSchedules[0],amount:String(initialSchedules[0].amount)}:undefined,_dirty:eid&&(String(parseFloat(singleAmount))!==String(initialSchedules[0]?.amount)||singleFrequency!==initialSchedules[0]?.frequency)}]
-    } else {
-      finalSchedules=schedules.map(s=>({...s,id:s.id||undefined,amount:parseFloat(s.amount),anchor_date:s.anchor_date||startedOn,effective_from:s.effective_from||startedOn,custom_days:s.custom_days||null}))
-    }
-    const formData={name,description,parent_category_id:parentCatId||null,color:color||null,account_id:null,status,started_on:startedOn,notes:description,schedules:finalSchedules}
-    const dirty=finalSchedules.filter(s=>s.id&&s._dirty)
-    if(dirty.length>0){setPendingForm(formData);setIntentQueue(dirty);setIntentIndex(0);setResolved([])}
-    else onSave(formData)
-  }
-
-  const handleIntentResolve=(resolution)=>{
-    if(!resolution){setIntentQueue(null);return}
-    const cur=intentQueue[intentIndex];const newResolved=[...resolvedIntents,{schedule_id:cur.id,...resolution}]
-    setResolved(newResolved);const remaining=intentQueue.length-intentIndex-1
-    if(resolution.applyToAll&&remaining>0){const rest=intentQueue.slice(intentIndex+1).map(r=>({schedule_id:r.id,intent:resolution.intent,effective_from:resolution.effective_from,target_month:resolution.target_month,applyToAll:false}));setIntentQueue(null);onSave({...pendingForm,_intents:[...newResolved,...rest]})}
-    else if(intentIndex<intentQueue.length-1)setIntentIndex(i=>i+1)
-    else{setIntentQueue(null);onSave({...pendingForm,_intents:newResolved})}
-  }
-
-  return (
-    <>
-      <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!intentQueue&&onClose()}>
-        <div className="modal" style={{maxWidth:'820px',maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
-
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'4px',flexShrink:0}}>
-            <h3 className="modal-title" style={{margin:0}}>{initial?'Edit income source':'Add income source'}</h3>
-            <div className="budget-view-toggle">
-              <button className={`budget-view-btn${activeTab==='details'?' active':''}`} type="button" onClick={()=>handleTabChange('details')}>Details</button>
-              <button className={`budget-view-btn${activeTab==='split'?' active':''}`} type="button" onClick={()=>handleTabChange('split')} style={{display:'flex',alignItems:'center',gap:'4px'}}>
-                <Scissors size={11}/>{schedules.length>1?`Split (${schedules.length})`:'Split'}
-              </button>
-            </div>
-          </div>
-
-          <div style={{overflowY:'auto',flex:1,scrollbarWidth:'none'}}>
-            <form id="income-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:0}}>
-
-              <div className="modal-section-header">Category</div>
-              <div className="modal-section">
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
-                  <div className="form-group"><label>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Salary — Acme Corp" required /></div>
-                  <div className="form-group"><label>Parent category</label><TreeSelect value={parentCatName} onChange={handleParentChange} categories={parentCats} placeholder="Income (default)" selectableParents={true} allowClear={true} /></div>
-                </div>
-                <div className="form-group"><label>Color <span style={{color:'var(--text-tertiary)',fontWeight:400}}>(optional)</span></label><ColorPicker value={color} onChange={setColor} /></div>
-              </div>
-
-              <div className="modal-section-header">Income details</div>
-              <div className="modal-section">
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
-                  <div className="form-group"><label>Status</label><select value={status} onChange={e=>setStatus(e.target.value)}><option value="active">Active</option><option value="paused">Paused</option><option value="stopped">Stopped</option></select></div>
-                  <div className="form-group"><label>Started on</label><DateInput value={startedOn} onChange={handleStartedOnChange} required /></div>
-                </div>
-
-                {activeTab==='details'&&(
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'4px'}}>
-                    <div className="form-group"><label>Amount ($)</label><CurrencyInput value={singleAmount} onChange={setSingleAmount} placeholder="0.00" required /></div>
-                    <div className="form-group"><label>Frequency</label><select value={singleFrequency} onChange={e=>setSingleFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
-                    {needsCustomDays&&(<div className="form-group" style={{gridColumn:'1/3'}}><label>{singleFrequency==='twice_monthly'?'Pay days':'Days of month'}</label><input type="text" value={singleFrequency==='twice_monthly'?(singleCustomDays||'1,15'):singleCustomDays} onChange={e=>setSingleCustomDays(e.target.value)} placeholder="e.g. 1, 15" /></div>)}
-                    {detailsMonthly&&<div style={{gridColumn:'1/3',fontSize:'11px',color:'var(--text-tertiary)',marginTop:'-6px'}}>{singleFrequency!=='monthly'?`≈ ${formatCurrency(detailsMonthly)}/mo · `:''}{formatCurrency(detailsMonthly*12)}/yr</div>}
-                  </div>
-                )}
-
-                {activeTab==='split'&&(
-                  <div style={{marginTop:'4px'}}>
-                    <div style={{marginBottom:'6px'}}><label style={{fontSize:'12px',fontWeight:500}}>Pay schedules</label><span style={{fontSize:'11px',color:'var(--text-tertiary)',marginLeft:'8px'}}>Each schedule creates its own budget category</span></div>
-                    <div style={{maxHeight:'320px',overflowY:'auto',scrollbarWidth:'none'}}>
-                      <RecurringRulePanel columns={RULE_COLUMNS} headers={RULE_HEADERS} onAdd={addSchedule} addLabel="Add schedule" helperText="Enter your net take-home amount per deposit." dirtyCount={dirtyCount}>
-                        {schedules.map((s,i)=><ScheduleRuleRow key={s.id||i} schedule={s} index={i} onChange={updateSchedule} onRemove={removeSchedule} canRemove={schedules.length>1} started_on={startedOn} accounts={accounts} allSchedules={allSchedules} siblingSchedules={schedules} />)}
-                      </RecurringRulePanel>
-                    </div>
-                  </div>
-                )}
-
-                <div className="form-group" style={{marginTop:'4px'}}><label>Description <span style={{color:'var(--text-tertiary)',fontWeight:400}}>(optional)</span></label><input type="text" value={description} onChange={e=>setDescription(e.target.value)} placeholder="Brief description or notes" /></div>
-              </div>
-            </form>
-          </div>
-
-          <div className="modal-btns" style={{flexShrink:0,paddingTop:'14px',borderTop:'1px solid var(--border)',marginTop:'4px'}}>
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" form="income-form" className="btn-primary" disabled={loading}>{loading?'Saving...':'Save'}</button>
-          </div>
-        </div>
-      </div>
-      {intentQueue&&intentQueue[intentIndex]&&<ChangeIntentModal row={intentQueue[intentIndex]} original={intentQueue[intentIndex]._original} rowIndex={intentIndex} totalDirty={intentQueue.length} onResolve={handleIntentResolve} />}
     </>
   )
 }

@@ -1,5 +1,6 @@
 // FormControls.jsx — shared form input components
 import { useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 // ── CurrencyInput ─────────────────────────────────────────────────────────────
 // Always displays a fully formatted value ("1,234.56") — both focused and
@@ -158,18 +159,40 @@ function SingleDatePicker({ value, onChange, onClose }) {
 }
 
 // ── DateInput ─────────────────────────────────────────────────────────────────
-// Styled single-date trigger that matches the DateRangeTrigger visual style.
-// Clicking opens a SingleDatePicker popover.
+// Styled single-date trigger. Popover is rendered via createPortal at fixed
+// position so it escapes overflow:hidden/auto scroll containers (e.g. modals).
 
 export function DateInput({ value, onChange, required, placeholder = 'Select date' }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [pos,  setPos]  = useState({ top: 0, left: 0 })
+  const triggerRef = useRef(null)
+  const popoverRef = useRef(null)
 
+  // Close on outside click
   useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    if (!open) return
+    const handler = (e) => {
+      if (!triggerRef.current?.contains(e.target) && !popoverRef.current?.contains(e.target))
+        setOpen(false)
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [open])
+
+  const handleOpen = () => {
+    if (open) { setOpen(false); return }
+    const rect = triggerRef.current?.getBoundingClientRect()
+    if (rect) {
+      // Prefer opening below; if too close to bottom, open above
+      const spaceBelow = window.innerHeight - rect.bottom
+      const popoverH   = 320 // approximate height
+      const top = spaceBelow > popoverH
+        ? rect.bottom + 6
+        : rect.top - popoverH - 6
+      setPos({ top, left: rect.left })
+    }
+    setOpen(true)
+  }
 
   const fmtDisplay = (iso) => {
     if (!iso) return null
@@ -178,8 +201,8 @@ export function DateInput({ value, onChange, required, placeholder = 'Select dat
   }
 
   return (
-    <div className="drp-trigger-wrap" ref={ref}>
-      <div className="date-input-wrap" onClick={() => setOpen(o => !o)}>
+    <div ref={triggerRef} style={{ position: 'relative' }}>
+      <div className="date-input-wrap" onClick={handleOpen}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, color: 'var(--text-secondary)' }}>
           <rect x="1" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5"/>
           <path d="M5 1v4M11 1v4M1 7h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -187,16 +210,16 @@ export function DateInput({ value, onChange, required, placeholder = 'Select dat
         <span className={value ? 'date-input-val' : 'date-input-placeholder'}>
           {fmtDisplay(value) || placeholder}
         </span>
-        {/* Hidden input for form validation */}
-        {required && <input type="text" required={required} value={value || ''} readOnly tabIndex={-1}
-          style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />}
+        {required && (
+          <input type="text" required value={value || ''} readOnly tabIndex={-1}
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }} />
+        )}
       </div>
-      {open && (
-        <SingleDatePicker
-          value={value}
-          onChange={onChange}
-          onClose={() => setOpen(false)}
-        />
+      {open && createPortal(
+        <div ref={popoverRef} style={{ position: 'fixed', top: pos.top, left: pos.left, zIndex: 9999 }}>
+          <SingleDatePicker value={value} onChange={onChange} onClose={() => setOpen(false)} />
+        </div>,
+        document.body
       )}
     </div>
   )

@@ -105,40 +105,42 @@ function SplitEditor({ totalAmount, categories, onSave, onRemoveSplits, onCancel
             {/* Delete */}
             <button
               type="button"
-              className="btn-ghost"
               onClick={() => removeRow(i)}
               disabled={rows.length <= 2}
               title="Remove row"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3px', fontSize: '16px', color: rows.length <= 2 ? 'var(--text-tertiary)' : 'var(--red)', cursor: rows.length <= 2 ? 'default' : 'pointer' }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', padding: '8px 0', fontSize: '18px', lineHeight: 1, color: rows.length <= 2 ? 'var(--text-tertiary)' : 'var(--red)', background: 'none', border: 'none', cursor: rows.length <= 2 ? 'default' : 'pointer', borderRadius: 'var(--radius-sm)', transition: 'opacity 0.1s' }}
+              onMouseEnter={e => { if (rows.length > 2) e.currentTarget.style.opacity = '0.7' }}
+              onMouseLeave={e => e.currentTarget.style.opacity = '1'}
             >−</button>
           </div>
         ))}
 
         {/* Footer */}
-        <div className="tbl-footer-row" style={{ padding: '9px 0.75rem' }}>
+        <div className="tbl-footer-row" style={{ padding: '5px 0.75rem', fontSize: '11px' }}>
           {/* Total inline: value + label */}
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-            <span className="footer-value">{formatCurrency(total)}</span>
-            <span className="footer-label">total</span>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+            <span className="footer-value" style={{ fontSize: '12px' }}>{formatCurrency(total)}</span>
+            <span className="footer-label" style={{ fontSize: '10px' }}>total</span>
           </div>
           {/* Fill col — empty */}
           <div />
           {/* Remaining inline: value + label */}
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
-            <span className="footer-value" style={{ color: remainingColor }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+            <span className="footer-value" style={{ fontSize: '12px', color: remainingColor }}>
               {Math.abs(remaining) < 0.01 ? '✓ Balanced' : formatCurrency(Math.abs(remaining))}
             </span>
-            {Math.abs(remaining) >= 0.01 && <span className="footer-label">remaining</span>}
+            {Math.abs(remaining) >= 0.01 && <span className="footer-label" style={{ fontSize: '10px' }}>remaining</span>}
           </div>
           {/* Notes col — empty */}
           <div />
           {/* Add button */}
           <button
             type="button"
-            className="btn-ghost"
             onClick={addRow}
             title="Add row"
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3px', fontSize: '16px', color: 'var(--green)' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', padding: '8px 0', fontSize: '18px', lineHeight: 1, color: 'var(--green)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-sm)', transition: 'opacity 0.1s' }}
+            onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
           >+</button>
         </div>
       </div>

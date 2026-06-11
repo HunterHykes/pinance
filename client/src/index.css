@@ -359,7 +359,7 @@ input::placeholder {
   user-select: none;
   line-height: 1;
 }
-.currency-input { font-variant-numeric: tabular-nums; padding-left: 22px; width: 100%; }
+.currency-input { font-variant-numeric: tabular-nums; padding-left: 22px; padding-right: 8px; text-align: right; width: 100%; }
 input[type=number].no-spinner,
 .currency-input { -moz-appearance: textfield; }
 input[type=number].no-spinner::-webkit-inner-spin-button,

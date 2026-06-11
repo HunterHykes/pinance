@@ -247,7 +247,7 @@ function ColorDialog({ value, onChange, onClose, anchorRef }) {
 // ── Main ColorPicker component ────────────────────────────────────────────────
 // Renders a small color dot as the trigger. Click to open the dialog.
 
-export default function ColorPicker({ value, onChange }) {
+export default function ColorPicker({ value, onChange, hideLabel = false }) {
   const [open, setOpen] = useState(false)
   const dotRef = useRef(null)
 
@@ -286,12 +286,12 @@ export default function ColorPicker({ value, onChange }) {
       </button>
 
       {/* Current hex display */}
-      {displayColor && (
+      {!hideLabel && displayColor && (
         <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
           {displayColor}
         </span>
       )}
-      {!displayColor && (
+      {!hideLabel && !displayColor && (
         <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
           No color
         </span>
