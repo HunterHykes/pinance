@@ -1,0 +1,39 @@
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# ── Build output ──────────────────────────────────────────────────────────────
+client/dist/
+
+# ── Database & sessions ───────────────────────────────────────────────────────
+# The data directory contains the SQLite database and session store.
+# On the Pi this is a LUKS-encrypted volume — never commit it.
+data/
+pinance-data.img
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+# Real env file lives at /etc/pinance/.env — not in the project tree.
+# If a local .env is ever added to the project root, exclude it.
+.env
+.env.local
+.env.production
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── Vite cache ────────────────────────────────────────────────────────────────
+client/.vite/
+
+# ── Cloudflare Tunnel Config ──────────────────────────────────────────────────
+cloudflared.deb
+
+# ── PM2 ───────────────────────────────────────────────────────────────────────
+# ecosystem.config.js

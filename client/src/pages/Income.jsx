@@ -1,0 +1,370 @@
+import { useState, useMemo, useRef, useEffect } from 'react'
+import { TrendingUp, Scissors } from 'lucide-react'
+import RowMoreMenu from '../components/RowMoreMenu'
+import {
+  useIncomeSources, useCreateIncomeSource, useUpdateIncomeSource,
+  useDeleteIncomeSource,
+} from '../hooks/useIncome'
+import { useBudget } from '../hooks/useBudget'
+import { useAccounts } from '../hooks/useAccounts'
+import { formatCurrency, currentMonth, resolveColor } from '../utils'
+import TreeSelect from '../components/TreeSelect'
+import ColorPicker from '../components/ColorPicker'
+import ChangeIntentModal from '../components/ChangeIntentModal'
+import RecurringRulePanel from '../components/RecurringRulePanel'
+import { MonthPicker } from '../components/DateRangePicker'
+
+const FREQUENCIES = [
+  { value: 'weekly',        label: 'Weekly' },
+  { value: 'biweekly',      label: 'Every two weeks' },
+  { value: 'twice_monthly', label: 'Twice a month' },
+  { value: 'monthly',       label: 'Monthly' },
+  { value: 'quarterly',     label: 'Quarterly' },
+  { value: 'semi_annual',   label: 'Semi-annual' },
+  { value: 'annual',        label: 'Annual' },
+  { value: 'custom_days',   label: 'Custom days' },
+]
+const REC_COLS    = 'minmax(0,1fr) minmax(100px,140px) minmax(80px,100px) minmax(80px,100px) minmax(80px,100px) 36px'
+const RULE_COLUMNS = '2fr 130px 140px 130px 24px 110px 48px'
+const RULE_HEADERS = ['Label', 'Started on', 'Frequency', 'Account', '', 'Amount', '']
+
+function freqLabel(f) { return FREQUENCIES.find(x=>x.value===f)?.label||f }
+
+function occurrencesPerMonth(frequency, customDays) {
+  switch(frequency){case 'monthly':return 1;case 'twice_monthly':return 2;case 'weekly':return 4.33;case 'biweekly':return 2.17;case 'quarterly':return 1/3;case 'semi_annual':return 1/6;case 'annual':return 1/12;case 'custom_days':return customDays?customDays.split(',').filter(d=>d.trim()).length:1;default:return 1}
+}
+
+function monthlyEquivalent(schedules) {
+  return schedules.filter(s=>!s.effective_to).reduce((sum,s)=>sum+s.amount*occurrencesPerMonth(s.frequency,s.custom_days),0)
+}
+
+function incomeOccursInMonth(anchorDate, frequency, customDays, targetMonth) {
+  if(!anchorDate) return false
+  const anchor=new Date(anchorDate+'T00:00:00');const [ty,tm]=targetMonth.split('-').map(Number)
+  switch(frequency){case 'monthly':case 'twice_monthly':case 'weekly':return true;case 'biweekly':{const start=new Date(`${targetMonth}-01T00:00:00`),end=new Date(ty,tm,0);let d=new Date(anchor);while(d>start)d.setDate(d.getDate()-14);while(d<start)d.setDate(d.getDate()+14);return d<=end}case 'quarterly':{const am=anchor.getFullYear()*12+anchor.getMonth(),bm=ty*12+(tm-1);return bm>=am&&(bm-am)%3===0}case 'semi_annual':{const am=anchor.getFullYear()*12+anchor.getMonth(),bm=ty*12+(tm-1);return bm>=am&&(bm-am)%6===0}case 'annual':return anchor.getMonth()===(tm-1)&&ty>=anchor.getFullYear();case 'custom_days':return !!(customDays&&customDays.trim().length>0);default:return false}
+}
+
+function deriveAnchorDate(frequency, startedOn) { return startedOn||new Date().toISOString().slice(0,10) }
+const defaultSchedule=(startedOn)=>({label:'',amount:'',frequency:'biweekly',custom_days:'',anchor_date:deriveAnchorDate('biweekly',startedOn),effective_from:startedOn||new Date().toISOString().slice(0,10)})
+
+function CurrencyInput({ value, onChange, placeholder, required, style }) {
+  const [focused,setFocused]=useState(false)
+  const display=!focused&&value!==''&&!isNaN(parseFloat(value))?parseFloat(value).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):value
+  return <input type="text" inputMode="decimal" value={display} placeholder={placeholder} required={required} style={style} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)} onChange={e=>{const raw=e.target.value.replace(/[^0-9.]/g,'');const p=raw.split('.');onChange(p.length>2?p[0]+'.'+p.slice(1).join(''):raw)}} />
+}
+
+function ScheduleRuleRow({ schedule, index, onChange, onRemove, canRemove, started_on, accounts, allSchedules, siblingSchedules }) {
+  const [showHist,setShowHist]=useState(false)
+  const isExisting=!!schedule.id,isDirty=isExisting&&schedule._dirty
+  const set=(field,val)=>onChange(index,{...schedule,[field]:val})
+  const labelTrimmed=schedule.label?.trim()||''
+  const isDupLabel=labelTrimmed!==''&&(siblingSchedules||[]).some((s,i)=>i!==index&&(s.label?.trim()||'')===labelTrimmed)
+  const handleFreqChange=(freq)=>{const a=deriveAnchorDate(freq,started_on);onChange(index,{...schedule,frequency:freq,anchor_date:a})}
+  const needsCustomDays=schedule.frequency==='custom_days'||schedule.frequency==='twice_monthly'
+  const itemHist=useMemo(()=>(!schedule.budget_category_id||!allSchedules)?[]:allSchedules.filter(s=>s.budget_category_id===schedule.budget_category_id),[schedule.budget_category_id,allSchedules])
+  return (
+    <>
+      <div style={{display:'grid',gridTemplateColumns:RULE_COLUMNS,gap:'6px',alignItems:'center',padding:'6px 0',borderBottom:needsCustomDays?'none':'1px solid var(--border)',background:isDirty?'rgba(59,130,246,0.04)':'transparent'}}>
+        <div style={{position:'relative'}}>
+          <input type="text" value={schedule.label} onChange={e=>set('label',e.target.value)} placeholder="Label" required style={{fontSize:'13px',borderColor:isDupLabel?'var(--red)':undefined,outline:isDupLabel?'1px solid var(--red)':undefined,width:'100%'}} />
+          {isDupLabel&&<span style={{position:'absolute',top:'100%',left:0,fontSize:'10px',color:'var(--red)',whiteSpace:'nowrap',marginTop:'1px'}}>Duplicate label</span>}
+        </div>
+        <input type="date" value={schedule.anchor_date||started_on||''} onChange={e=>set('anchor_date',e.target.value)} style={{fontSize:'13px'}} />
+        <select value={schedule.frequency} onChange={e=>handleFreqChange(e.target.value)} style={{fontSize:'13px'}}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select>
+        <select value={schedule.account_id||''} onChange={e=>set('account_id',e.target.value||null)} style={{fontSize:'13px'}}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
+        <div style={{display:'flex',justifyContent:'center'}}>{isExisting&&itemHist.length>1&&<button type="button" className={`btn-trend${showHist?' btn-trend--active':''}`} onClick={()=>setShowHist(h=>!h)} title="History"><TrendingUp size={12}/></button>}</div>
+        <CurrencyInput value={schedule.amount} onChange={v=>set('amount',v)} placeholder="0.00" required style={{fontSize:'13px'}} />
+        <div style={{display:'flex',justifyContent:'center'}}>{canRemove&&<button type="button" className="btn-icon-remove" onClick={()=>onRemove(index)} title="Remove"><span style={{fontSize:'16px',lineHeight:1}}>−</span></button>}</div>
+      </div>
+      {needsCustomDays&&(<div style={{padding:'4px 0 8px',fontSize:'12px',color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:'8px',borderBottom:'1px solid var(--border)'}}><span style={{color:'var(--text-tertiary)'}}>{schedule.frequency==='twice_monthly'?'Pay days:':'Days of month:'}</span><input type="text" value={schedule.frequency==='twice_monthly'?(schedule.custom_days||'1,15'):(schedule.custom_days||'')} onChange={e=>set('custom_days',e.target.value)} placeholder="e.g. 1, 15" style={{width:'120px',fontSize:'13px'}} /></div>)}
+      {showHist&&itemHist.length>0&&(<div style={{padding:'4px 0 8px',borderBottom:'1px solid var(--border)'}}>{[...itemHist].sort((a,b)=>b.effective_from.localeCompare(a.effective_from)).map(s=><div key={s.id} className="sub-history-row"><span style={{color:s.effective_to?'var(--text-tertiary)':'var(--text)'}}>{s.label} — {formatCurrency(s.amount)} / {freqLabel(s.frequency)}</span><span style={{fontSize:'11px',color:'var(--text-tertiary)'}}>{new Date(s.effective_from+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}{s.effective_to?` → ${new Date(s.effective_to+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`:' → present'}</span></div>)}</div>)}
+    </>
+  )
+}
+
+function IncomeModal({ initial, categories, accounts, onClose, onSave, loading }) {
+  const [name,setName]=useState(initial?.name||''),[description,setDescription]=useState(initial?.description||initial?.notes||''),[parentCatId,setParentCatId]=useState(initial?.parent_category_id||null),[color,setColor]=useState(initial?.color||null),[status,setStatus]=useState(initial?.status||'active'),[startedOn,setStartedOn]=useState(initial?.started_on||new Date().toISOString().slice(0,10))
+
+  const initialSchedules=initial?.schedules?.filter(s=>!s.effective_to)||[]
+  const [activeTab,setActiveTab]=useState(initialSchedules.length>1?'split':'details')
+  const [schedules,setSchedules]=useState(()=>initialSchedules.length>0?initialSchedules.map(s=>({...s,amount:String(s.amount),_original:{...s,amount:String(s.amount)}})):[defaultSchedule(initial?.started_on)])
+
+  const firstSched=initialSchedules[0]
+  const [singleAmount,setSingleAmount]=useState(firstSched?String(firstSched.amount):'')
+  const [singleFrequency,setSingleFrequency]=useState(firstSched?.frequency||'biweekly')
+  const [singleAnchor,setSingleAnchor]=useState(firstSched?.anchor_date||'')
+  const [singleCustomDays,setSingleCustomDays]=useState(firstSched?.custom_days||'')
+
+  const [intentQueue,setIntentQueue]=useState(null),[intentIndex,setIntentIndex]=useState(0),[resolvedIntents,setResolved]=useState([]),[pendingForm,setPendingForm]=useState(null)
+
+  const parentCats=categories.filter(c=>!c.is_subscription&&!c.is_income)
+  const parentCatName=parentCats.find(c=>c.id===parentCatId)?.category||''
+  const handleParentChange=(n)=>{const cat=parentCats.find(c=>c.category===n);setParentCatId(cat?.id||null)}
+
+  const handleStartedOnChange=(newDate)=>{setStartedOn(newDate);setSingleAnchor(a=>a===startedOn?newDate:a);setSchedules(ss=>ss.map(s=>({...s,anchor_date:s.anchor_date===startedOn?deriveAnchorDate(s.frequency,newDate):s.anchor_date,effective_from:s.effective_from===startedOn?newDate:s.effective_from})))}
+
+  const updateSchedule=(i,val)=>setSchedules(ss=>ss.map((s,idx)=>{if(idx!==i)return s;const u={...val};if(s._original){const o=s._original;u._dirty=String(u.amount)!==String(o.amount)||u.frequency!==o.frequency||u.anchor_date!==o.anchor_date||(u.account_id||null)!==(o.account_id||null)||(u.label||'')!==(o.label||'')}return u}))
+  const addSchedule=()=>setSchedules(ss=>[...ss,defaultSchedule(startedOn)])
+  const removeSchedule=(i)=>setSchedules(ss=>ss.filter((_,idx)=>idx!==i))
+
+  const handleTabChange=(tab)=>{
+    if(tab==='split'&&activeTab==='details'){setSchedules(ss=>ss.length===1?[{...ss[0],label:ss[0].label||(name.trim()||'Income'),amount:singleAmount||ss[0].amount,frequency:singleFrequency,anchor_date:singleAnchor||startedOn,custom_days:singleCustomDays||null}]:ss)}
+    if(tab==='details'&&activeTab==='split'&&schedules.length>0){setSingleAmount(schedules[0].amount);setSingleFrequency(schedules[0].frequency);setSingleAnchor(schedules[0].anchor_date);setSingleCustomDays(schedules[0].custom_days||'')}
+    setActiveTab(tab)
+  }
+
+  const dirtyCount=schedules.filter(s=>s.id&&s._dirty).length
+  const allSchedules=initial?.schedules||[]
+  const needsCustomDays=singleFrequency==='custom_days'||singleFrequency==='twice_monthly'
+
+  const detailsMonthly=useMemo(()=>{const amt=parseFloat(singleAmount);if(!amt||isNaN(amt))return null;return amt*occurrencesPerMonth(singleFrequency,singleCustomDays)},[singleAmount,singleFrequency,singleCustomDays])
+
+  const handleSubmit=(e)=>{
+    e.preventDefault()
+    let finalSchedules
+    if(activeTab==='details'){
+      const eid=initialSchedules[0]?.id
+      finalSchedules=[{...(eid?{id:eid}:{}),label:name.trim()||'Income',amount:parseFloat(singleAmount),frequency:singleFrequency,anchor_date:singleAnchor||startedOn,effective_from:initialSchedules[0]?.effective_from||startedOn,account_id:null,custom_days:singleCustomDays||null,_original:initialSchedules[0]?{...initialSchedules[0],amount:String(initialSchedules[0].amount)}:undefined,_dirty:eid&&(String(parseFloat(singleAmount))!==String(initialSchedules[0]?.amount)||singleFrequency!==initialSchedules[0]?.frequency)}]
+    } else {
+      finalSchedules=schedules.map(s=>({...s,id:s.id||undefined,amount:parseFloat(s.amount),anchor_date:s.anchor_date||startedOn,effective_from:s.effective_from||startedOn,custom_days:s.custom_days||null}))
+    }
+    const formData={name,description,parent_category_id:parentCatId||null,color:color||null,account_id:null,status,started_on:startedOn,notes:description,schedules:finalSchedules}
+    const dirty=finalSchedules.filter(s=>s.id&&s._dirty)
+    if(dirty.length>0){setPendingForm(formData);setIntentQueue(dirty);setIntentIndex(0);setResolved([])}
+    else onSave(formData)
+  }
+
+  const handleIntentResolve=(resolution)=>{
+    if(!resolution){setIntentQueue(null);return}
+    const cur=intentQueue[intentIndex];const newResolved=[...resolvedIntents,{schedule_id:cur.id,...resolution}]
+    setResolved(newResolved);const remaining=intentQueue.length-intentIndex-1
+    if(resolution.applyToAll&&remaining>0){const rest=intentQueue.slice(intentIndex+1).map(r=>({schedule_id:r.id,intent:resolution.intent,effective_from:resolution.effective_from,target_month:resolution.target_month,applyToAll:false}));setIntentQueue(null);onSave({...pendingForm,_intents:[...newResolved,...rest]})}
+    else if(intentIndex<intentQueue.length-1)setIntentIndex(i=>i+1)
+    else{setIntentQueue(null);onSave({...pendingForm,_intents:newResolved})}
+  }
+
+  return (
+    <>
+      <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!intentQueue&&onClose()}>
+        <div className="modal" style={{maxWidth:'820px',maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
+
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'4px',flexShrink:0}}>
+            <h3 className="modal-title" style={{margin:0}}>{initial?'Edit income source':'Add income source'}</h3>
+            <div className="budget-view-toggle">
+              <button className={`budget-view-btn${activeTab==='details'?' active':''}`} type="button" onClick={()=>handleTabChange('details')}>Details</button>
+              <button className={`budget-view-btn${activeTab==='split'?' active':''}`} type="button" onClick={()=>handleTabChange('split')} style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                <Scissors size={11}/>{schedules.length>1?`Split (${schedules.length})`:'Split'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{overflowY:'auto',flex:1,scrollbarWidth:'none'}}>
+            <form id="income-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:0}}>
+
+              <div className="modal-section-header">Category</div>
+              <div className="modal-section">
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+                  <div className="form-group"><label>Name</label><input type="text" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Salary — Acme Corp" required /></div>
+                  <div className="form-group"><label>Parent category</label><TreeSelect value={parentCatName} onChange={handleParentChange} categories={parentCats} placeholder="Income (default)" selectableParents={true} allowClear={true} /></div>
+                </div>
+                <div className="form-group"><label>Color <span style={{color:'var(--text-tertiary)',fontWeight:400}}>(optional)</span></label><ColorPicker value={color} onChange={setColor} /></div>
+              </div>
+
+              <div className="modal-section-header">Income details</div>
+              <div className="modal-section">
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+                  <div className="form-group"><label>Status</label><select value={status} onChange={e=>setStatus(e.target.value)}><option value="active">Active</option><option value="paused">Paused</option><option value="stopped">Stopped</option></select></div>
+                  <div className="form-group"><label>Started on</label><input type="date" value={startedOn} onChange={e=>handleStartedOnChange(e.target.value)} required /></div>
+                </div>
+
+                {activeTab==='details'&&(
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginTop:'4px'}}>
+                    <div className="form-group"><label>Amount ($)</label><CurrencyInput value={singleAmount} onChange={setSingleAmount} placeholder="0.00" required /></div>
+                    <div className="form-group"><label>Frequency</label><select value={singleFrequency} onChange={e=>setSingleFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
+                    {needsCustomDays&&(<div className="form-group" style={{gridColumn:'1/3'}}><label>{singleFrequency==='twice_monthly'?'Pay days':'Days of month'}</label><input type="text" value={singleFrequency==='twice_monthly'?(singleCustomDays||'1,15'):singleCustomDays} onChange={e=>setSingleCustomDays(e.target.value)} placeholder="e.g. 1, 15" /></div>)}
+                    {detailsMonthly&&<div style={{gridColumn:'1/3',fontSize:'11px',color:'var(--text-tertiary)',marginTop:'-6px'}}>{singleFrequency!=='monthly'?`≈ ${formatCurrency(detailsMonthly)}/mo · `:''}{formatCurrency(detailsMonthly*12)}/yr</div>}
+                  </div>
+                )}
+
+                {activeTab==='split'&&(
+                  <div style={{marginTop:'4px'}}>
+                    <div style={{marginBottom:'6px'}}><label style={{fontSize:'12px',fontWeight:500}}>Pay schedules</label><span style={{fontSize:'11px',color:'var(--text-tertiary)',marginLeft:'8px'}}>Each schedule creates its own budget category</span></div>
+                    <div style={{maxHeight:'320px',overflowY:'auto',scrollbarWidth:'none'}}>
+                      <RecurringRulePanel columns={RULE_COLUMNS} headers={RULE_HEADERS} onAdd={addSchedule} addLabel="Add schedule" helperText="Enter your net take-home amount per deposit." dirtyCount={dirtyCount}>
+                        {schedules.map((s,i)=><ScheduleRuleRow key={s.id||i} schedule={s} index={i} onChange={updateSchedule} onRemove={removeSchedule} canRemove={schedules.length>1} started_on={startedOn} accounts={accounts} allSchedules={allSchedules} siblingSchedules={schedules} />)}
+                      </RecurringRulePanel>
+                    </div>
+                  </div>
+                )}
+
+                <div className="form-group" style={{marginTop:'4px'}}><label>Description <span style={{color:'var(--text-tertiary)',fontWeight:400}}>(optional)</span></label><input type="text" value={description} onChange={e=>setDescription(e.target.value)} placeholder="Brief description or notes" /></div>
+              </div>
+            </form>
+          </div>
+
+          <div className="modal-btns" style={{flexShrink:0,paddingTop:'14px',borderTop:'1px solid var(--border)',marginTop:'4px'}}>
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" form="income-form" className="btn-primary" disabled={loading}>{loading?'Saving...':'Save'}</button>
+          </div>
+        </div>
+      </div>
+      {intentQueue&&intentQueue[intentIndex]&&<ChangeIntentModal row={intentQueue[intentIndex]} original={intentQueue[intentIndex]._original} rowIndex={intentIndex} totalDirty={intentQueue.length} onResolve={handleIntentResolve} />}
+    </>
+  )
+}
+
+function DeleteConfirmModal({ title, message, onConfirm, onCancel }) {
+  return (
+    <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&onCancel()}>
+      <div className="modal" style={{maxWidth:'400px'}}>
+        <h3 className="modal-title">{title}</h3>
+        <p style={{fontSize:'13px',color:'var(--text-secondary)',margin:'8px 0 20px'}}>{message}</p>
+        <div className="modal-btns"><button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button><button type="button" className="btn-danger" style={{background:'var(--red)',color:'#fff',border:'none'}} onClick={onConfirm}>Delete</button></div>
+      </div>
+    </div>
+  )
+}
+
+const MONTHS_SHORT=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+function fmtMonth(yyyymm){const [y,m]=yyyymm.split('-').map(Number);return `${MONTHS_SHORT[m-1]} ${y}`}
+function scheduleThisMonth(s,month){if(!incomeOccursInMonth(s.anchor_date,s.frequency,s.custom_days,month))return 0;return s.amount*occurrencesPerMonth(s.frequency,s.custom_days)}
+function scheduleNextMonth(s,fromMonth){for(let i=1;i<=24;i++){const d=new Date(fromMonth+'-01');d.setMonth(d.getMonth()+i);const m=d.toISOString().slice(0,7);if(incomeOccursInMonth(s.anchor_date,s.frequency,s.custom_days,m))return m}return null}
+
+function IncomeScheduleRow({ schedule, src, color, month, onEditSchedule, onDeleteSchedule, isLast }) {
+  const [confirmDelete,setConfirmDelete]=useState(false)
+  const occ=occurrencesPerMonth(schedule.frequency,schedule.custom_days),monthly=schedule.amount*occ,annual=monthly*12,thisAmt=scheduleThisMonth(schedule,month),isDue=thisAmt>0
+  const dueBadge=isDue?<span className="sub-badge sub-badge--active" style={{fontSize:'10px'}}>Due {fmtMonth(month)}</span>:(()=>{const n=scheduleNextMonth(schedule,month);return n?<span className="sub-badge" style={{fontSize:'10px',background:'rgba(136,136,136,0.15)',color:'var(--text-tertiary)'}}>Next {fmtMonth(n)}</span>:null})()
+  return (
+    <>
+      <div className="acct-tbl-row" style={{paddingLeft:'3rem',background:'var(--bg-secondary)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'10px',minWidth:0}}>
+          <div className="budget-dot-btn" style={{background:color,flexShrink:0,opacity:0.6}} />
+          <div style={{minWidth:0}}><span className="budget-cat-name">{schedule.label||'(unlabeled)'}</span><div className="budget-cat-sub">{freqLabel(schedule.frequency)}{schedule.account_name?` · ${schedule.account_name}`:''}</div></div>
+        </div>
+        <div>{dueBadge}</div>
+        <div style={{textAlign:'right',fontSize:'13px',fontWeight:600,color:isDue?'var(--green)':'var(--text-tertiary)'}}>{isDue?formatCurrency(thisAmt):'—'}</div>
+        <div style={{textAlign:'right',fontSize:'13px',color:'var(--text-secondary)'}}>{formatCurrency(monthly)}</div>
+        <div style={{textAlign:'right',fontSize:'13px',color:'var(--text-secondary)'}}>{formatCurrency(annual)}</div>
+        <RowMoreMenu items={[
+          { label: 'Edit', onClick: () => onEditSchedule(schedule) },
+          !isLast && { label: 'Remove', danger: true, onClick: () => setConfirmDelete(true) },
+        ]} />
+      </div>
+      {confirmDelete&&<DeleteConfirmModal title="Remove pay schedule" message={`Remove "${schedule.label||'this schedule'}"? This will zero out future budget months.`} onConfirm={()=>{setConfirmDelete(false);onDeleteSchedule(schedule)}} onCancel={()=>setConfirmDelete(false)} />}
+    </>
+  )
+}
+
+function IncomeScheduleModal({ schedule, src, accounts, onClose, onSave, saving }) {
+  const [label,setLabel]=useState(schedule.label||''),[amount,setAmount]=useState(String(schedule.amount)),[frequency,setFrequency]=useState(schedule.frequency),[anchorDate,setAnchorDate]=useState(schedule.anchor_date||src.started_on),[accountId,setAccountId]=useState(schedule.account_id||''),[customDays,setCustomDays]=useState(schedule.custom_days||''),[intentModal,setIntentModal]=useState(false),[pendingForm,setPendingForm]=useState(null)
+  const needsCustomDays=frequency==='custom_days'||frequency==='twice_monthly'
+  const isDirty=label!==(schedule.label||'')||amount!==String(schedule.amount)||frequency!==schedule.frequency||anchorDate!==(schedule.anchor_date||src.started_on)||(accountId||null)!==(schedule.account_id||null)
+  const handleSubmit=(e)=>{e.preventDefault();const us={id:schedule.id,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,effective_from:schedule.effective_from,account_id:accountId||null,custom_days:customDays||null};const os=src.schedules.filter(s=>!s.effective_to&&s.id!==schedule.id).map(s=>({id:s.id,label:s.label,amount:s.amount,frequency:s.frequency,anchor_date:s.anchor_date,effective_from:s.effective_from,account_id:s.account_id||null,custom_days:s.custom_days||null}));const fd={name:src.name,description:src.description||src.notes||'',parent_category_id:src.parent_category_id,color:src.color,account_id:src.account_id,status:src.status,started_on:src.started_on,notes:src.notes||'',schedules:[...os,us]};if(isDirty){setPendingForm({formData:fd,updatedSchedule:us});setIntentModal(true)}else onClose()}
+  const handleIntentResolve=(r)=>{if(!r){setIntentModal(false);return};onSave({...pendingForm.formData,_intents:[{schedule_id:schedule.id,...r}]})}
+  return (
+    <>
+      <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!intentModal&&onClose()}>
+        <div className="modal" style={{maxWidth:'480px'}}>
+          <h3 className="modal-title">Edit pay schedule</h3>
+          <p style={{fontSize:'12px',color:'var(--text-tertiary)',marginTop:'-4px',marginBottom:'12px'}}>{src.name}</p>
+          <form id="sched-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div className="form-group"><label>Label</label><input type="text" value={label} onChange={e=>setLabel(e.target.value)} required /></div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+              <div className="form-group"><label>Started on</label><input type="date" value={anchorDate} onChange={e=>setAnchorDate(e.target.value)} required /></div>
+              <div className="form-group"><label>Frequency</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
+              <div className="form-group"><label>Account</label><select value={accountId} onChange={e=>setAccountId(e.target.value)}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+              <div className="form-group"><label>Amount</label><CurrencyInput value={amount} onChange={setAmount} placeholder="0.00" required /></div>
+            </div>
+            {needsCustomDays&&<div className="form-group"><label>{frequency==='twice_monthly'?'Pay days':'Days of month'}</label><input type="text" value={frequency==='twice_monthly'?(customDays||'1,15'):customDays} onChange={e=>setCustomDays(e.target.value)} placeholder="e.g. 1, 15" /></div>}
+            <div className="modal-btns"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" form="sched-form" className="btn-primary" disabled={saving}>{saving?'Saving...':'Save'}</button></div>
+          </form>
+        </div>
+      </div>
+      {intentModal&&<ChangeIntentModal row={{...schedule,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,account_id:accountId||null,_original:schedule}} original={schedule} rowIndex={0} totalDirty={1} onResolve={handleIntentResolve} />}
+    </>
+  )
+}
+
+function IncomeTableRow({ src, categories, accounts, month, onEdit, onDelete, onUpdate }) {
+  const [expanded,setExpanded]=useState(true),[editingSchedule,setEditingSchedule]=useState(null)
+  const activeSchedules=src.schedules.filter(s=>!s.effective_to),monthlyEq=monthlyEquivalent(src.schedules),thisMonthTotal=activeSchedules.reduce((s,sc)=>s+scheduleThisMonth(sc,month),0)
+  const cat=categories.find(c=>c.income_id===src.id)||categories.find(c=>c.id===src.parent_category_id)
+  const color=src.color||(cat?resolveColor(cat,categories):'var(--text-tertiary)'),hasSchedules=activeSchedules.length>1
+  const statusBadgeEl=src.status==='stopped'?<span className="sub-badge sub-badge--cancelled">Stopped</span>:src.status==='paused'?<span className="sub-badge sub-badge--paused">Paused</span>:<span className="sub-badge sub-badge--active">Active</span>
+  const handleDeleteSchedule=async(schedule)=>{if(activeSchedules.length<=1)return;const rem=activeSchedules.filter(s=>s.id!==schedule.id);await onUpdate({id:src.id,data:{name:src.name,description:src.description||src.notes||'',parent_category_id:src.parent_category_id,color:src.color,account_id:src.account_id,status:src.status,started_on:src.started_on,notes:src.notes||'',schedules:rem.map(s=>({id:s.id,label:s.label,amount:s.amount,frequency:s.frequency,anchor_date:s.anchor_date,effective_from:s.effective_from,account_id:s.account_id||null,custom_days:s.custom_days||null}))}})}
+  return (
+    <>
+      <div className={`acct-tbl-row${src.status!=='active'?' acct-tbl-row--inactive':''}`}>
+        <div style={{display:'flex',alignItems:'center',gap:'10px',minWidth:0}}>
+          <button className={'budget-dot-btn'+(hasSchedules?' budget-dot-btn--expandable':'')} style={{background:color,flexShrink:0}} onClick={e=>{e.stopPropagation();hasSchedules&&setExpanded(v=>!v)}}>
+            {hasSchedules&&<svg className={'dot-chevron'+(expanded?' dot-chevron--open':'')} width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1.5 3L4 5.5L6.5 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+          </button>
+          <div style={{minWidth:0}}><span className="budget-cat-name">{src.name}</span>{(src.parent_category_name||src.description)&&<div className="budget-cat-sub">{[src.parent_category_name||'Income',src.description].filter(Boolean).join(' · ')}{(()=>{const a=[...new Set(activeSchedules.map(s=>s.account_name).filter(Boolean))];return a.length?` · ${a.join(', ')}`:null})()}</div>}</div>
+        </div>
+        <div>{statusBadgeEl}</div>
+        <div style={{textAlign:'right',fontSize:'13px',fontWeight:600,color:src.status==='active'?'var(--green)':'var(--text-tertiary)'}}>{formatCurrency(thisMonthTotal)}</div>
+        <div style={{textAlign:'right',fontSize:'13px',color:'var(--text-secondary)'}}>{formatCurrency(monthlyEq)}</div>
+        <div style={{textAlign:'right',fontSize:'13px',color:'var(--text-secondary)'}}>{formatCurrency(monthlyEq*12)}</div>
+        <RowMoreMenu items={[
+          { label: 'Edit', onClick: () => onEdit(src) },
+          { label: 'Delete', danger: true, onClick: () => onDelete(src.id) },
+        ]} />
+      </div>
+      {expanded&&activeSchedules.map(s=><IncomeScheduleRow key={s.id} schedule={s} src={src} color={color} month={month} onEditSchedule={setEditingSchedule} onDeleteSchedule={handleDeleteSchedule} isLast={activeSchedules.length===1} />)}
+      {editingSchedule&&<IncomeScheduleModal schedule={editingSchedule} src={src} accounts={accounts} onClose={()=>setEditingSchedule(null)} onSave={async(form)=>{await onUpdate({id:src.id,data:form});setEditingSchedule(null)}} saving={false} />}
+    </>
+  )
+}
+
+function Income() {
+  const [showModal,setShowModal]=useState(false),[editing,setEditing]=useState(null),[month,setMonth]=useState(currentMonth()),[statusFilter,setStatusFilter]=useState('active'),[openFilter,setOpenFilter]=useState(false)
+  const filterRef=useRef(null)
+  const {data:sources=[],isLoading}=useIncomeSources(),{data:categories=[]}=useBudget({}),{data:accounts=[]}=useAccounts()
+  const createSource=useCreateIncomeSource(),updateSource=useUpdateIncomeSource(),deleteSource=useDeleteIncomeSource()
+  useEffect(()=>{if(!openFilter)return;const h=(e)=>{if(filterRef.current&&!filterRef.current.contains(e.target))setOpenFilter(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[openFilter])
+  const filtered=useMemo(()=>statusFilter==='all'?sources:sources.filter(s=>s.status===statusFilter),[sources,statusFilter])
+  const activeSources=sources.filter(s=>s.status==='active'),totalMonthly=activeSources.reduce((s,src)=>s+monthlyEquivalent(src.schedules),0)
+  const filteredMonthly=filtered.reduce((s,src)=>s+monthlyEquivalent(src.schedules),0)
+  const filteredThisMonth=filtered.reduce((s,src)=>s+src.schedules.filter(sc=>!sc.effective_to).reduce((a,sc)=>a+scheduleThisMonth(sc,month),0),0)
+  const handleSave=async(form)=>{try{if(editing)await updateSource.mutateAsync({id:editing.id,data:form});else await createSource.mutateAsync(form);setShowModal(false);setEditing(null)}catch(err){console.error(err)}}
+  const handleDelete=async(id)=>{if(!window.confirm('Delete this income source? Future budget months will be zeroed out.'))return;await deleteSource.mutateAsync(id)}
+  const handleInlineUpdate=async({id,data})=>{try{await updateSource.mutateAsync({id,data})}catch(err){console.error(err)}}
+  const STATUS_OPTIONS=[{value:'active',label:'Active'},{value:'paused',label:'Paused'},{value:'stopped',label:'Stopped'},{value:'all',label:'All'}]
+  if(isLoading) return <div className="loading">Loading income...</div>
+  return (
+    <div>
+      <div className="page-header"><div><h1 className="page-title">Income</h1><MonthPicker value={month} onChange={setMonth} /></div><button className="btn-primary" onClick={()=>{setEditing(null);setShowModal(true)}}>+ Add income source</button></div>
+      <div className="grid-4" style={{marginBottom:'1.75rem'}}>
+        <div className="card metric-card"><div className="metric-label">Expected monthly</div><div className="metric-value up">{formatCurrency(totalMonthly)}</div><div className="metric-sub">net take-home</div></div>
+        <div className="card metric-card"><div className="metric-label">Expected annual</div><div className="metric-value up">{formatCurrency(totalMonthly*12)}</div><div className="metric-sub">estimated</div></div>
+        <div className="card metric-card"><div className="metric-label">Active sources</div><div className="metric-value">{activeSources.length}</div></div>
+        <div className="card metric-card"><div className="metric-label">Stopped</div><div className="metric-value">{sources.filter(s=>s.status==='stopped').length}</div></div>
+      </div>
+      {sources.length===0?(<div className="card"><p className="muted" style={{fontSize:'13px'}}>No income sources yet. <button className="btn-link" onClick={()=>setShowModal(true)}>Add one</button></p></div>):(
+        <div className="card" style={{padding:0,'--dt-cols':REC_COLS}}>
+          <div className="acct-tbl-header">
+            <span className="col-header-label">Name</span>
+            <div className="txn-filter-cell" ref={filterRef}>
+              <button className="txn-col-header-btn" onClick={()=>setOpenFilter(o=>!o)}>
+                <span className="col-header-label">Status{statusFilter!=='all'?` · ${statusFilter}`:''}</span>
+                <svg className="txn-chevron" width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1l4 4 4-4" stroke="#555" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </button>
+              {openFilter&&<div className="txn-filter-dropdown">{STATUS_OPTIONS.map(opt=><div key={opt.value} className="txn-filter-option" onClick={()=>{setStatusFilter(opt.value);setOpenFilter(false)}} style={{color:statusFilter===opt.value?'var(--accent)':undefined}}>{opt.label}</div>)}</div>}
+            </div>
+            <span className="col-header-label" style={{justifyContent:'flex-end'}}>This Month</span>
+            <span className="col-header-label" style={{justifyContent:'flex-end'}}>Monthly</span>
+            <span className="col-header-label" style={{justifyContent:'flex-end'}}>Annually</span>
+            <div/>
+          </div>
+          {filtered.length===0?(<p className="muted" style={{fontSize:'13px',padding:'1.25rem 1.5rem'}}>No {statusFilter!=='all'?statusFilter:''} income sources.</p>):(filtered.map(src=><IncomeTableRow key={src.id} src={src} categories={categories} accounts={accounts} month={month} onEdit={s=>{setEditing(s);setShowModal(true)}} onDelete={handleDelete} onUpdate={handleInlineUpdate} />))}
+          {filtered.length>0&&(<div className="tbl-footer-row"><span className="footer-label">Total ({statusFilter==='all'?'all':statusFilter})</span><div/><span className="footer-value footer-value--up" style={{textAlign:'right'}}>{formatCurrency(filteredThisMonth)}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredMonthly)}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredMonthly*12)}</span><div/></div>)}
+        </div>
+      )}
+      {showModal&&<IncomeModal initial={editing} categories={categories} accounts={accounts} onClose={()=>{setShowModal(false);setEditing(null)}} onSave={handleSave} loading={createSource.isPending||updateSource.isPending} />}
+    </div>
+  )
+}
+
+export default Income
