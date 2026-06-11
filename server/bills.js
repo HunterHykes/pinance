@@ -82,7 +82,16 @@ function createBillCategories(userId, sub, charges, parentCategoryId) {
       const nameConflict = db.prepare(
         'SELECT id FROM budget_categories WHERE user_id = ? AND category = ? AND (bill_id IS NULL OR bill_id != ?)'
       ).get(userId, leafName, sub.id)
-      if (nameConflict) insertName = `${leafName} (${sub.id})`
+      if (nameConflict) {
+        // Find an unused name with sequential suffix
+        let suffix = 2
+        while (db.prepare(
+          'SELECT id FROM budget_categories WHERE user_id = ? AND category = ?'
+        ).get(userId, `${leafName} (${suffix})`)) {
+          suffix++
+        }
+        insertName = `${leafName} (${suffix})`
+      }
 
       const r = db.prepare(`
         INSERT INTO budget_categories

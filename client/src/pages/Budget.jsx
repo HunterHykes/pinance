@@ -18,11 +18,9 @@ import {
 import { useBills, useUpdateBill } from '../hooks/useBills'
 import { useIncomeSources, useUpdateIncomeSource } from '../hooks/useIncome'
 import { formatCurrency, currentMonth, buildCategoryTree, sumSpent, sumLimit, resolveColor } from '../utils'
-import TreeSelect from '../components/TreeSelect'
-import ColorPicker from '../components/ColorPicker'
-import { CurrencyInput } from '../components/FormControls'
 import ChangeIntentModal from '../components/ChangeIntentModal'
 import { MonthPicker } from '../components/DateRangePicker'
+import CategoryModal from '../components/CategoryModal'
 
 // ── Bill helpers (client-side) ───────────────────────────────────────
 
@@ -56,83 +54,6 @@ function nextOccurrenceMonth(anchorDate, frequency, fromMonth) {
     if (chargeOccursInMonth(anchorDate, frequency, m)) return m
   }
   return null
-}
-
-const defaultForm = {
-  category:      '',
-  monthly_limit: '0',
-  parent_id:     null,
-  color:         null,
-}
-
-// ── Shared category modal ─────────────────────────────────────────────────────
-
-function CategoryModal({ initial, categories, onClose, onSave, loading, title }) {
-  const [form, setForm] = useState(initial || defaultForm)
-  const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    onSave({ ...form, monthly_limit: isBill ? form.monthly_limit : (parseFloat(form.monthly_limit) || 0), parent_id: form.parent_id ?? null })
-  }
-
-  function getDescendantIds(id, allCats) {
-    const ids = new Set([id])
-    const queue = [id]
-    while (queue.length) {
-      const current = queue.shift()
-      allCats.filter(c => c.parent_id === current).forEach(c => { ids.add(c.id); queue.push(c.id) })
-    }
-    return ids
-  }
-
-  const hasChildren       = initial ? categories.some(c => c.parent_id === initial.id) : false
-  const isBill            = !!initial?.is_bill
-  const excluded          = initial ? getDescendantIds(initial.id, categories) : new Set()
-  const parentCategories  = categories.filter(c => !excluded.has(c.id))
-  const parentName        = form.parent_id ? (categories.find(c => c.id === form.parent_id)?.category ?? '') : ''
-  const handleParentChange = (selectedName) => {
-    if (!selectedName) { set('parent_id', null) } else {
-      const match = parentCategories.find(c => c.category === selectedName)
-      set('parent_id', match ? match.id : null)
-    }
-  }
-
-  return (
-    <div className="modal-bg" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
-        <h3 className="modal-title">{title}</h3>
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="form-group">
-            <label>Category name</label>
-            <input type="text" value={form.category} onChange={e => set('category', e.target.value)} placeholder="e.g. Electricity" required />
-          </div>
-          <div className="form-group">
-            <label>Monthly limit ($)</label>
-            {(!hasChildren && !isBill) ? (
-              <CurrencyInput value={form.monthly_limit} onChange={v => set('monthly_limit', v)} placeholder="0.00" />
-            ) : (
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', padding: '8px 11px', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                {isBill ? 'Auto-calculated from Bills' : 'Auto-calculated from subcategories'}
-              </div>
-            )}
-          </div>
-          <div className="form-group">
-            <label>Parent category (optional)</label>
-            <TreeSelect value={parentName} onChange={handleParentChange} categories={parentCategories} placeholder="None (top-level)" selectableParents={true} excludedValue={initial?.category ?? null} />
-          </div>
-          <div className="form-group">
-            <label>Color</label>
-            <ColorPicker value={form.color} onChange={v => set('color', v)} />
-          </div>
-          <div className="modal-btns">
-            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving...' : 'Save'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
 }
 
 
@@ -281,7 +202,6 @@ function BudgetRow({ node, allCategories, depth = 0, onEdit, onDelete, barColor 
                   type="number"
                   step="0.01"
                   min="0"
-                  className="no-spinner"
                   value={inlineEdit.value}
                   onChange={e => onInlineEditChange(e.target.value)}
                   onBlur={() => onInlineEditCommit()}
@@ -409,7 +329,6 @@ function TemplateRow({ node, allCategories, depth = 0, onEdit, onDelete, dragSta
 }
 
 // ── Main Budget page ──────────────────────────────────────────────────────────
-
 function Budget() {
   document.title = 'Pinance | Budget'
   const [searchParams, setSearchParams] = useSearchParams()
@@ -654,7 +573,7 @@ function Budget() {
           <button className="btn-ghost" onClick={handleSyncFromCurrent} disabled={syncFromCurrent.isPending} title={isTemplate ? `Overwrite template with ${month}` : `Save ${month} to template`}>
             {isTemplate ? `↓ Sync from ${month}` : `↑ Sync to template`}
           </button>
-          <button className="btn-primary" onClick={() => setShowModal(true)}>+ Add category</button>
+          <button className="btn-primary" onClick={() => setShowModal(true)}>+ Add Category</button>
         </div>
       </div>
 
@@ -698,8 +617,14 @@ function Budget() {
                 </div>
               </div>
               <div className="budget-remaining-col col-header-label">Remaining</div>
-              <div style={{ visibility: 'hidden', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
-                <button className="btn-ghost" style={{ padding: '4px 6px' }}><span style={{ width: '14px', display: 'block' }} /></button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <button
+                  onClick={() => setShowModal(true)}
+                  title="Add Category"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '26px', height: '26px', fontSize: '18px', lineHeight: 1, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-sm)', transition: 'color 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.color = 'var(--green)'}
+                  onMouseLeave={e => e.currentTarget.style.color = 'var(--text-tertiary)'}
+                >+</button>
               </div>
             </div>
           </div>
@@ -720,7 +645,7 @@ function Budget() {
           onClose={handleClose}
           onSave={handleSave}
           loading={saveBudgetCategory.isPending || updateBudgetCategory.isPending || saveTmpl.isPending || updateTmpl.isPending}
-          title={editing ? `Edit ${isTemplate ? 'template' : 'category'}` : `Add ${isTemplate ? 'template' : 'category'}`}
+          title={editing ? `Edit ${isTemplate ? 'Template' : 'Category'}` : `Add ${isTemplate ? 'Template' : 'Category'}`}
         />
       )}
 

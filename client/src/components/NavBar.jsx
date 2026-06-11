@@ -134,7 +134,7 @@ function RecurringDropdown({ active }) {
     <div ref={ref} className="navbar-dropdown-wrap" onMouseEnter={show} onMouseLeave={hide}>
       <button
         className={`navbar-link navbar-dropdown-trigger ${active ? 'active' : ''}`}
-        onClick={() => { navigate('/bills'); setOpen(false) }}
+        onClick={() => { navigate('/income'); setOpen(false) }}
       >
         Recurring
       </button>

@@ -41,7 +41,7 @@ const defaultSchedule = (startedOn) => ({
 
 // Schedule table column layout
 // Amount | Account | Label | Started On | Frequency | −/+
-const SCHED_COLS = '110px 120px 2fr 120px 130px 28px'
+const SCHED_COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px) 28px'
 const SCHED_HDRS = ['Amount', 'Account', 'Label', 'Started On', 'Frequency', '']
 
 const headerStyle = {
@@ -192,6 +192,14 @@ export default function IncomeModal({ initial, categories, accounts, onClose, on
   const parentCatName = parentCats.find(c => c.id === parentCatId)?.category || ''
   const handleParentChange = (n) => { const cat = parentCats.find(c => c.category === n); setParentCatId(cat?.id || null) }
 
+  // Live conflict: any existing category whose name matches, excluding own categories
+  const nameConflict = (!initial && !isSplit)
+    ? categories.find(c =>
+        c.category.trim().toLowerCase() === name.trim().toLowerCase() &&
+        c.income_id !== (initial?.id ?? -1)
+      ) ?? null
+    : null
+
   const handleStartedOnChange = (newDate) => {
     setStartedOn(newDate)
     setSingleSched(s => ({ ...s, anchor_date: s.anchor_date === startedOn ? newDate : s.anchor_date, effective_from: s.effective_from === startedOn ? newDate : s.effective_from }))
@@ -235,6 +243,8 @@ export default function IncomeModal({ initial, categories, accounts, onClose, on
     : scheduleMonthly(singleSched)
   const annualTotal  = monthlyTotal * 12
 
+  const [mergePending, setMergePending] = useState(null)
+
   const handleSubmit = (e) => {
     e.preventDefault()
     let finalSchedules
@@ -246,6 +256,13 @@ export default function IncomeModal({ initial, categories, accounts, onClose, on
       finalSchedules = schedules.map(s => ({ ...s, id: s.id || undefined, amount: parseFloat(s.amount), anchor_date: s.anchor_date || startedOn, effective_from: s.effective_from || startedOn, custom_days: s.custom_days || null }))
     }
     const formData = { name, description, parent_category_id: parentCatId || null, color: color || null, account_id: null, status, started_on: startedOn, notes: description, schedules: finalSchedules }
+
+    // Client-side conflict check: only for new single-schedule sources
+    if (!initial && finalSchedules.length === 1 && nameConflict) {
+      setMergePending({ formData, conflict: nameConflict })
+      return
+    }
+
     const dirty = finalSchedules.filter(s => s.id && s._dirty)
     if (dirty.length > 0) { setPendingForm(formData); setIntentQueue(dirty); setIntentIndex(0); setResolved([]) }
     else onSave(formData)
@@ -270,7 +287,7 @@ export default function IncomeModal({ initial, categories, accounts, onClose, on
   return (
     <>
       <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentQueue && onClose()}>
-        <div className="modal" style={{ maxWidth: '760px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal" style={{ maxWidth: '860px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexShrink: 0 }}>
@@ -304,6 +321,12 @@ export default function IncomeModal({ initial, categories, accounts, onClose, on
                   </div>
                 </div>
               </div>
+              {nameConflict && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span style={{ color: 'var(--accent)', flexShrink: 0 }}>ⓘ</span>
+                  A category named <strong style={{ color: 'var(--text)', margin: '0 3px' }}>{nameConflict.category}</strong> already exists — you'll be asked to merge or create new on save.
+                </div>
+              )}
 
               {/* ── Schedule table ── */}
               <div className="modal-section-header">
@@ -413,6 +436,32 @@ export default function IncomeModal({ initial, categories, accounts, onClose, on
           </div>
         </div>
       </div>
+
+      {mergePending && (
+        <div className="modal-bg">
+          <div className="modal" style={{ maxWidth: '420px' }}>
+            <h3 className="modal-title">Category name conflict</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              A budget category named <strong>"{mergePending.conflict.category}"</strong> already exists. What would you like to do?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button className="btn-ghost" style={{ textAlign: 'left', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '3px' }}
+                onClick={() => { const fd = mergePending.formData; setMergePending(null); onSave({ ...fd, merge_category_id: mergePending.conflict.id }) }}>
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>Merge with existing category</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Link this income source to "{mergePending.conflict.category}" — no duplicate created</span>
+              </button>
+              <button className="btn-ghost" style={{ textAlign: 'left', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '3px' }}
+                onClick={() => { const fd = mergePending.formData; setMergePending(null); onSave(fd) }}>
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>Create a new category</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Adds a separate "{mergePending.conflict.category} (2)" category</span>
+              </button>
+            </div>
+            <div className="modal-btns" style={{ marginTop: '16px' }}>
+              <button className="btn-ghost" onClick={() => setMergePending(null)}>Back</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {intentQueue && intentQueue[intentIndex] && (
         <ChangeIntentModal

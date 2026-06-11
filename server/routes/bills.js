@@ -60,7 +60,8 @@ router.get('/', (req, res) => {
 router.post('/', (req, res) => {
   const userId = req.session.userId
   const { name, description, parent_category_id, account_id,
-          color, status, pause_until, started_on, notes, charges } = req.body
+          color, status, pause_until, started_on, notes, charges,
+          merge_category_id } = req.body
 
   if (!name || !started_on)
     return res.status(400).json({ error: 'name and started_on are required' })
@@ -101,14 +102,31 @@ router.post('/', (req, res) => {
   })()
 
   // Now create budget categories (outside transaction so IDs are committed)
-  const sub     = db.prepare('SELECT * FROM bills WHERE id = ?').get(subId)
-  const dbCharges = db.prepare(
-    'SELECT * FROM bill_charges WHERE bill_id = ?'
-  ).all(subId)
+  const sub       = db.prepare('SELECT * FROM bills WHERE id = ?').get(subId)
+  const dbCharges = db.prepare('SELECT * FROM bill_charges WHERE bill_id = ?').all(subId)
 
   try {
     db.transaction(() => {
-      createBillCategories(userId, sub, dbCharges, parent_category_id || null)
+      if (merge_category_id && dbCharges.length === 1) {
+        // Merge: point the existing category at this bill and link the charge to it
+        db.prepare(`
+          UPDATE budget_categories
+          SET bill_id = ?, is_bill = 1, color = COALESCE(?, color), category = ?
+          WHERE id = ? AND user_id = ?
+        `).run(subId, color || null, name, merge_category_id, userId)
+
+        db.prepare('UPDATE bill_charges SET budget_category_id = ? WHERE id = ?')
+          .run(merge_category_id, dbCharges[0].id)
+
+        // Sync template amount
+        db.prepare(`
+          INSERT INTO budget_template (user_id, budget_id, monthly_limit)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id, budget_id) DO UPDATE SET monthly_limit = excluded.monthly_limit
+        `).run(userId, merge_category_id, dbCharges[0].amount)
+      } else {
+        createBillCategories(userId, sub, dbCharges, parent_category_id || null)
+      }
     })()
   } catch (err) {
     console.error('Category creation error:', err.message)
@@ -132,6 +150,7 @@ router.put('/:id', (req, res) => {
   const userId = req.session.userId
   const subId  = req.params.id
   const { name, description, account_id, parent_category_id, status, pause_until, notes, scope,
+          color,
           charges: incomingCharges } = req.body
 
   const existing = db.prepare(
@@ -151,13 +170,19 @@ router.put('/:id', (req, res) => {
   db.prepare(`
     UPDATE bills SET
       name = ?, description = ?, account_id = ?, parent_category_id = ?,
+      color = ?,
       status = ?, pause_until = ?,
       cancelled_on = CASE WHEN ? = 'cancelled' AND cancelled_on IS NULL
                     THEN date('now') ELSE cancelled_on END,
       notes = ?
     WHERE id = ? AND user_id = ?
   `).run(name, description || null, account_id || null, parent_category_id || null,
+         color || null,
          status, pause_until || null, status, notes || null, subId, userId)
+
+  // Sync color to linked budget_categories
+  db.prepare(`UPDATE budget_categories SET color = ? WHERE bill_id = ? AND user_id = ?`)
+    .run(color || null, subId, userId)
 
   const sub = db.prepare('SELECT * FROM bills WHERE id = ?').get(subId)
 

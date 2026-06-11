@@ -195,6 +195,20 @@ router.put('/:id', (req, res) => {
     WHERE id = @id AND user_id = @user_id
   `).run({ category, parent_id: parent_id || null, color: color || null, id: catId, user_id: userId })
 
+  // Sync color back to owning bills/income_sources row and all sibling budget_categories
+  if (cat.bill_id) {
+    db.prepare('UPDATE bills SET color = ? WHERE id = ? AND user_id = ?')
+      .run(color || null, cat.bill_id, userId)
+    db.prepare('UPDATE budget_categories SET color = ? WHERE bill_id = ? AND user_id = ?')
+      .run(color || null, cat.bill_id, userId)
+  }
+  if (cat.income_id) {
+    db.prepare('UPDATE income_sources SET color = ? WHERE id = ? AND user_id = ?')
+      .run(color || null, cat.income_id, userId)
+    db.prepare('UPDATE budget_categories SET color = ? WHERE income_id = ? AND user_id = ?')
+      .run(color || null, cat.income_id, userId)
+  }
+
   if (monthly_limit !== undefined) {
     // Update budget_limits for this month
     db.prepare(`

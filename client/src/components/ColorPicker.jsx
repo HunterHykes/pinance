@@ -74,9 +74,9 @@ function ColorDialog({ value, onChange, onClose, anchorRef }) {
   const [hexInput, setHexInput] = useState(value || '#3b82f6')
   const [hexError, setHexError] = useState(false)
   const dialogRef = useRef(null)
-  const [pos, setPos] = useState({ top: 0, left: 0 })
+  const [pos, setPos] = useState(null)
 
-  // Position below anchor
+  // Position below anchor — runs once on mount; null pos hides dialog until ready
   useEffect(() => {
     if (!anchorRef?.current) return
     const r = anchorRef.current.getBoundingClientRect()
@@ -137,6 +137,8 @@ function ColorDialog({ value, onChange, onClose, anchorRef }) {
   }
 
   const currentHex = value || rgbToHex(rgb)
+
+  if (!pos) return null
 
   return (
     <div

@@ -255,15 +255,32 @@ function shouldSyncItem(item, globalFrequency) {
   ).get(item.user_id, item.institution)
 
   const frequency = instPref?.sync_frequency || globalFrequency || 'weekly'
-  if (frequency === 'never') return false
+  const label = item.institution || item.item_id
+
+  if (frequency === 'never') {
+    console.log(`  [schedule] ${label}: frequency=never → skip`)
+    return false
+  }
 
   const intervalHours = FREQUENCY_HOURS[frequency] || 168
 
-  if (!item.last_synced) return true  // never synced — run it
+  if (!item.last_synced) {
+    console.log(`  [schedule] ${label}: never synced → run`)
+    return true
+  }
 
-  const lastSynced = new Date(item.last_synced + ' UTC')
+  const lastSynced = item.last_synced.includes('T')
+    ? new Date(item.last_synced)
+    : new Date(item.last_synced + ' UTC')
+  if (isNaN(lastSynced.getTime())) {
+    console.log(`  [schedule] ${label}: last_synced="${item.last_synced}" failed to parse → run`)
+    return true
+  }
+
   const hoursSince = (Date.now() - lastSynced.getTime()) / (1000 * 60 * 60)
-  return hoursSince >= intervalHours
+  const due = hoursSince >= intervalHours
+  console.log(`  [schedule] ${label}: freq=${frequency}(${intervalHours}h) last_synced="${item.last_synced}" hoursSince=${hoursSince.toFixed(2)} → ${due ? 'run' : 'skip'}`)
+  return due
 }
 
 // Legacy user-level check: returns true if ANY item for the user is due.

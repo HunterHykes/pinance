@@ -122,33 +122,75 @@ function IncomeScheduleRow({ schedule, src, color, month, onEditSchedule, onDele
 }
 
 function IncomeScheduleModal({ schedule, src, accounts, onClose, onSave, saving }) {
-  const [label,setLabel]=useState(schedule.label||''),[amount,setAmount]=useState(String(schedule.amount)),[frequency,setFrequency]=useState(schedule.frequency),[anchorDate,setAnchorDate]=useState(schedule.anchor_date||src.started_on),[accountId,setAccountId]=useState(schedule.account_id||''),[customDays,setCustomDays]=useState(schedule.custom_days||''),[intentModal,setIntentModal]=useState(false),[pendingForm,setPendingForm]=useState(null)
-  const needsCustomDays=frequency==='custom_days'||frequency==='twice_monthly'
-  const isDirty=label!==(schedule.label||'')||amount!==String(schedule.amount)||frequency!==schedule.frequency||anchorDate!==(schedule.anchor_date||src.started_on)||(accountId||null)!==(schedule.account_id||null)
-  const handleSubmit=(e)=>{e.preventDefault();const us={id:schedule.id,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,effective_from:schedule.effective_from,account_id:accountId||null,custom_days:customDays||null};const os=src.schedules.filter(s=>!s.effective_to&&s.id!==schedule.id).map(s=>({id:s.id,label:s.label,amount:s.amount,frequency:s.frequency,anchor_date:s.anchor_date,effective_from:s.effective_from,account_id:s.account_id||null,custom_days:s.custom_days||null}));const fd={name:src.name,description:src.description||src.notes||'',parent_category_id:src.parent_category_id,color:src.color,account_id:src.account_id,status:src.status,started_on:src.started_on,notes:src.notes||'',schedules:[...os,us]};if(isDirty){setPendingForm({formData:fd,updatedSchedule:us});setIntentModal(true)}else onClose()}
-  const handleIntentResolve=(r)=>{if(!r){setIntentModal(false);return};onSave({...pendingForm.formData,_intents:[{schedule_id:schedule.id,...r}]})}
+  const [label,      setLabel]      = useState(schedule.label || '')
+  const [amount,     setAmount]     = useState(String(schedule.amount))
+  const [frequency,  setFrequency]  = useState(schedule.frequency)
+  const [anchorDate, setAnchorDate] = useState(schedule.anchor_date || src.started_on)
+  const [accountId,  setAccountId]  = useState(schedule.account_id || '')
+  const [customDays, setCustomDays] = useState(schedule.custom_days || '')
+  const [intentModal,  setIntentModal]  = useState(false)
+  const [pendingForm,  setPendingForm]  = useState(null)
+
+  const needsCustomDays = frequency === 'custom_days' || frequency === 'twice_monthly'
+  const isDirty = label !== (schedule.label || '') || amount !== String(schedule.amount) ||
+    frequency !== schedule.frequency || anchorDate !== (schedule.anchor_date || src.started_on) ||
+    (accountId || null) !== (schedule.account_id || null)
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const us = { id: schedule.id, label, amount: parseFloat(amount), frequency, anchor_date: anchorDate, effective_from: schedule.effective_from, account_id: accountId || null, custom_days: customDays || null }
+    const os = src.schedules.filter(s => !s.effective_to && s.id !== schedule.id).map(s => ({ id: s.id, label: s.label, amount: s.amount, frequency: s.frequency, anchor_date: s.anchor_date, effective_from: s.effective_from, account_id: s.account_id || null, custom_days: s.custom_days || null }))
+    const fd = { name: src.name, description: src.description || src.notes || '', parent_category_id: src.parent_category_id, color: src.color, account_id: src.account_id, status: src.status, started_on: src.started_on, notes: src.notes || '', schedules: [...os, us] }
+    if (isDirty) { setPendingForm({ formData: fd, updatedSchedule: us }); setIntentModal(true) } else onClose()
+  }
+  const handleIntentResolve = (r) => {
+    if (!r) { setIntentModal(false); return }
+    onSave({ ...pendingForm.formData, _intents: [{ schedule_id: schedule.id, ...r }] })
+  }
+
+  const colStyle = { fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-tertiary)' }
+  const COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px)'
+
   return (
     <>
-      <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!intentModal&&onClose()}>
-        <div className="modal" style={{maxWidth:'480px'}}>
-          <h3 className="modal-title">Edit pay schedule</h3>
-          <p style={{fontSize:'12px',color:'var(--text-tertiary)',marginTop:'-4px',marginBottom:'12px'}}>{src.name}</p>
-          <form id="sched-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:'12px'}}>
-            <div className="form-group"><label>Label</label><input type="text" value={label} onChange={e=>setLabel(e.target.value)} required /></div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
-              <div className="form-group"><label>Started on</label><DateInput value={anchorDate} onChange={setAnchorDate} required /></div>
-              <div className="form-group"><label>Frequency</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div>
+      <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentModal && onClose()}>
+        <div className="modal" style={{ maxWidth: '860px' }}>
+          <h3 className="modal-title" style={{ marginBottom: '2px' }}>Edit Pay Schedule</h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>{src.name}</p>
+          <form id="sched-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="card" style={{ padding: 0, '--dt-cols': COLS }}>
+              <div className="acct-tbl-header" style={{ position: 'relative', top: 'unset', padding: '6px 0.75rem' }}>
+                {['Amount', 'Account', 'Label', 'Started On', 'Frequency'].map((h, i) => (
+                  <div key={i} style={colStyle}>{h}</div>
+                ))}
+              </div>
+              <div className="acct-tbl-row" style={{ padding: '5px 0.75rem', alignItems: 'center' }}>
+                <CurrencyInput value={amount} onChange={setAmount} placeholder="0.00" required />
+                <select value={accountId} onChange={e => setAccountId(e.target.value)} style={{ fontSize: '13px' }}>
+                  <option value="">—</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Label" required style={{ fontSize: '13px' }} />
+                <DateInput value={anchorDate} onChange={setAnchorDate} />
+                <select value={frequency} onChange={e => setFrequency(e.target.value)} style={{ fontSize: '13px' }}>
+                  {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+              </div>
+              {needsCustomDays && (
+                <div style={{ padding: '4px 0.75rem 8px', fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border)' }}>
+                  <span style={{ color: 'var(--text-tertiary)' }}>{frequency === 'twice_monthly' ? 'Pay days:' : 'Days of month:'}</span>
+                  <input type="text" value={frequency === 'twice_monthly' ? (customDays || '1,15') : customDays} onChange={e => setCustomDays(e.target.value)} placeholder="e.g. 1, 15" style={{ width: '120px', fontSize: '13px' }} />
+                </div>
+              )}
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}>
-              <div className="form-group"><label>Account</label><select value={accountId} onChange={e=>setAccountId(e.target.value)}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
-              <div className="form-group"><label>Amount</label><CurrencyInput value={amount} onChange={setAmount} placeholder="0.00" required /></div>
+            <div className="modal-btns">
+              <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button type="submit" form="sched-form" className="btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
             </div>
-            {needsCustomDays&&<div className="form-group"><label>{frequency==='twice_monthly'?'Pay days':'Days of month'}</label><input type="text" value={frequency==='twice_monthly'?(customDays||'1,15'):customDays} onChange={e=>setCustomDays(e.target.value)} placeholder="e.g. 1, 15" /></div>}
-            <div className="modal-btns"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" form="sched-form" className="btn-primary" disabled={saving}>{saving?'Saving...':'Save'}</button></div>
           </form>
         </div>
       </div>
-      {intentModal&&<ChangeIntentModal row={{...schedule,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,account_id:accountId||null,_original:schedule}} original={schedule} rowIndex={0} totalDirty={1} onResolve={handleIntentResolve} />}
+      {intentModal && <ChangeIntentModal row={{ ...schedule, label, amount: parseFloat(amount), frequency, anchor_date: anchorDate, account_id: accountId || null, _original: schedule }} original={schedule} rowIndex={0} totalDirty={1} onResolve={handleIntentResolve} />}
     </>
   )
 }
@@ -178,7 +220,7 @@ function IncomeTableRow({ src, categories, accounts, month, onEdit, onDelete, on
           { label: 'Delete', danger: true, onClick: () => onDelete(src.id) },
         ]} />
       </div>
-      {expanded&&activeSchedules.map(s=><IncomeScheduleRow key={s.id} schedule={s} src={src} color={color} month={month} onEditSchedule={setEditingSchedule} onDeleteSchedule={handleDeleteSchedule} isLast={activeSchedules.length===1} />)}
+      {hasSchedules&&expanded&&activeSchedules.map(s=><IncomeScheduleRow key={s.id} schedule={s} src={src} color={color} month={month} onEditSchedule={setEditingSchedule} onDeleteSchedule={handleDeleteSchedule} isLast={activeSchedules.length===1} />)}
       {editingSchedule&&<IncomeScheduleModal schedule={editingSchedule} src={src} accounts={accounts} onClose={()=>setEditingSchedule(null)} onSave={async(form)=>{await onUpdate({id:src.id,data:form});setEditingSchedule(null)}} saving={false} />}
     </>
   )
@@ -202,7 +244,7 @@ function Income() {
   if(isLoading) return <div className="loading">Loading income...</div>
   return (
     <div>
-      <div className="page-header"><div><h1 className="page-title">Income</h1><MonthPicker value={month} onChange={setMonth} /></div><button className="btn-primary" onClick={()=>{setEditing(null);setShowModal(true)}}>+ Add income source</button></div>
+      <div className="page-header"><div><h1 className="page-title">Income</h1><MonthPicker value={month} onChange={setMonth} /></div><button className="btn-primary" onClick={()=>{setEditing(null);setShowModal(true)}}>+ Add Income</button></div>
       <div className="grid-4" style={{marginBottom:'1.75rem'}}>
         <div className="card metric-card"><div className="metric-label">Expected monthly</div><div className="metric-value up">{formatCurrency(totalMonthly)}</div><div className="metric-sub">net take-home</div></div>
         <div className="card metric-card"><div className="metric-label">Expected annual</div><div className="metric-value up">{formatCurrency(totalMonthly*12)}</div><div className="metric-sub">estimated</div></div>

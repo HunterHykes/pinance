@@ -142,13 +142,68 @@ function BillChargeRow({ charge, sub, color, month, onEditCharge, onDeleteCharge
 }
 
 function BillChargeModal({ charge, sub, accounts, onClose, onSave, saving }) {
-  const [label,setLabel]=useState(charge.label||''),[amount,setAmount]=useState(String(charge.amount)),[frequency,setFrequency]=useState(charge.frequency),[anchorDate,setAnchorDate]=useState(charge.anchor_date||sub.started_on),[accountId,setAccountId]=useState(charge.account_id||''),[intentModal,setIntentModal]=useState(false),[pendingForm,setPendingForm]=useState(null)
-  const isDirty=label!==(charge.label||'')||amount!==String(charge.amount)||frequency!==charge.frequency||anchorDate!==(charge.anchor_date||sub.started_on)||(accountId||null)!==(charge.account_id||null)
-  const handleSubmit=(e)=>{e.preventDefault();const uc={id:charge.id,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,effective_from:charge.effective_from,account_id:accountId||null};const oc=sub.charges.filter(c=>!c.effective_to&&c.id!==charge.id).map(c=>({id:c.id,label:c.label,amount:c.amount,frequency:c.frequency,anchor_date:c.anchor_date,effective_from:c.effective_from,account_id:c.account_id||null}));const fd={name:sub.name,description:sub.description||sub.notes||'',parent_category_id:sub.parent_category_id,color:sub.color,account_id:sub.account_id,status:sub.status,pause_until:sub.pause_until,started_on:sub.started_on,notes:sub.notes||'',charges:[...oc,uc]};if(isDirty){setPendingForm({formData:fd,updatedCharge:uc});setIntentModal(true)}else onClose()}
-  const handleIntentResolve=(r)=>{if(!r){setIntentModal(false);return};onSave({...pendingForm.formData,scope:'this_and_future',_intents:[{charge_id:charge.id,...r}]})}
+  const [label,      setLabel]      = useState(charge.label || '')
+  const [amount,     setAmount]     = useState(String(charge.amount))
+  const [frequency,  setFrequency]  = useState(charge.frequency)
+  const [anchorDate, setAnchorDate] = useState(charge.anchor_date || sub.started_on)
+  const [accountId,  setAccountId]  = useState(charge.account_id || '')
+  const [intentModal,  setIntentModal]  = useState(false)
+  const [pendingForm,  setPendingForm]  = useState(null)
+
+  const isDirty = label !== (charge.label || '') || amount !== String(charge.amount) ||
+    frequency !== charge.frequency || anchorDate !== (charge.anchor_date || sub.started_on) ||
+    (accountId || null) !== (charge.account_id || null)
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    const uc = { id: charge.id, label, amount: parseFloat(amount), frequency, anchor_date: anchorDate, effective_from: charge.effective_from, account_id: accountId || null }
+    const oc = sub.charges.filter(c => !c.effective_to && c.id !== charge.id).map(c => ({ id: c.id, label: c.label, amount: c.amount, frequency: c.frequency, anchor_date: c.anchor_date, effective_from: c.effective_from, account_id: c.account_id || null }))
+    const fd = { name: sub.name, description: sub.description || sub.notes || '', parent_category_id: sub.parent_category_id, color: sub.color, account_id: sub.account_id, status: sub.status, pause_until: sub.pause_until, started_on: sub.started_on, notes: sub.notes || '', charges: [...oc, uc] }
+    if (isDirty) { setPendingForm({ formData: fd, updatedCharge: uc }); setIntentModal(true) } else onClose()
+  }
+  const handleIntentResolve = (r) => {
+    if (!r) { setIntentModal(false); return }
+    onSave({ ...pendingForm.formData, scope: 'this_and_future', _intents: [{ charge_id: charge.id, ...r }] })
+  }
+
+  const colStyle = { fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-tertiary)' }
+  const COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px)'
+
   return (
-    <>{<div className="modal-bg" onClick={e=>e.target===e.currentTarget&&!intentModal&&onClose()}><div className="modal" style={{maxWidth:'480px'}}><h3 className="modal-title">Edit charge rule</h3><p style={{fontSize:'12px',color:'var(--text-tertiary)',marginTop:'-4px',marginBottom:'12px'}}>{sub.name}</p><form id="charge-form" onSubmit={handleSubmit} style={{display:'flex',flexDirection:'column',gap:'12px'}}><div className="form-group"><label>Label</label><input type="text" value={label} onChange={e=>setLabel(e.target.value)} required /></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}><div className="form-group"><label>Started on</label><DateInput value={anchorDate} onChange={setAnchorDate} required /></div><div className="form-group"><label>Frequency</label><select value={frequency} onChange={e=>setFrequency(e.target.value)}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select></div></div><div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px'}}><div className="form-group"><label>Account</label><select value={accountId} onChange={e=>setAccountId(e.target.value)}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></div><div className="form-group"><label>Amount</label><CurrencyInput value={amount} onChange={setAmount} placeholder="0.00" required /></div></div><div className="modal-btns"><button type="button" className="btn-ghost" onClick={onClose}>Cancel</button><button type="submit" form="charge-form" className="btn-primary" disabled={saving}>{saving?'Saving...':'Save'}</button></div></form></div></div>}
-    {intentModal&&<ChangeIntentModal row={{...charge,label,amount:parseFloat(amount),frequency,anchor_date:anchorDate,account_id:accountId||null}} original={charge} rowIndex={0} totalDirty={1} onResolve={handleIntentResolve} />}</>
+    <>
+      <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentModal && onClose()}>
+        <div className="modal" style={{ maxWidth: '860px' }}>
+          <h3 className="modal-title" style={{ marginBottom: '2px' }}>Edit Charge Rule</h3>
+          <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>{sub.name}</p>
+          <form id="charge-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div className="card" style={{ padding: 0, '--dt-cols': COLS }}>
+              <div className="acct-tbl-header" style={{ position: 'relative', top: 'unset', padding: '6px 0.75rem' }}>
+                {['Amount', 'Account', 'Label', 'Started On', 'Frequency'].map((h, i) => (
+                  <div key={i} style={colStyle}>{h}</div>
+                ))}
+              </div>
+              <div className="acct-tbl-row" style={{ padding: '5px 0.75rem', alignItems: 'center' }}>
+                <CurrencyInput value={amount} onChange={setAmount} placeholder="0.00" required />
+                <select value={accountId} onChange={e => setAccountId(e.target.value)} style={{ fontSize: '13px' }}>
+                  <option value="">—</option>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Label" required style={{ fontSize: '13px' }} />
+                <DateInput value={anchorDate} onChange={setAnchorDate} />
+                <select value={frequency} onChange={e => setFrequency(e.target.value)} style={{ fontSize: '13px' }}>
+                  {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="modal-btns">
+              <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button type="submit" form="charge-form" className="btn-primary" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {intentModal && <ChangeIntentModal row={{ ...charge, label, amount: parseFloat(amount), frequency, anchor_date: anchorDate, account_id: accountId || null }} original={charge} rowIndex={0} totalDirty={1} onResolve={handleIntentResolve} />}
+    </>
   )
 }
 
@@ -180,7 +235,7 @@ function BillTableRow({ sub, categories, accounts, month, onEdit, onDelete, onUp
           { label: 'Delete', danger: true, onClick: () => onDelete(sub.id) },
         ]} />
       </div>
-      {expanded&&activeCharges.map(c=><BillChargeRow key={c.id} charge={c} sub={sub} color={color} month={month} onEditCharge={setEditingCharge} onDeleteCharge={handleDeleteCharge} isLast={activeCharges.length===1} />)}
+      {hasCharges&&expanded&&activeCharges.map(c=><BillChargeRow key={c.id} charge={c} sub={sub} color={color} month={month} onEditCharge={setEditingCharge} onDeleteCharge={handleDeleteCharge} isLast={activeCharges.length===1} />)}
       {editingCharge&&<BillChargeModal charge={editingCharge} sub={sub} accounts={accounts} onClose={()=>setEditingCharge(null)} onSave={async(form)=>{await onUpdate({id:sub.id,data:form});setEditingCharge(null)}} saving={false} />}
     </>
   )
@@ -200,10 +255,13 @@ function Bills() {
   const filteredMonthly=filtered.reduce((s,sub)=>s+monthlyEquivalent(sub.charges),0)
   const filteredThisMonth=filtered.reduce((s,sub)=>s+(sub.charges||[]).filter(c=>!c.effective_to).reduce((a,c)=>a+chargeThisMonth(c,month),0),0)
   const [pendingEdit,setPendingEdit]=useState(null),[pendingForm,setPendingForm]=useState(null),[showScopeModal,setShowScopeModal]=useState(false)
+
   const handleSave=async(form)=>{
     if(editing){const budgetRelevant=(editing.parent_category_id??null)!==(form.parent_category_id??null)||editing.status!==form.status;if(budgetRelevant){setPendingEdit({id:editing.id,form});setPendingForm(form);setShowModal(false);setShowScopeModal(true);return}
       try{await updateSub.mutateAsync({id:editing.id,data:{...form,scope:'this_and_future'}});setShowModal(false);setEditing(null)}catch(err){console.error(err)}}
-    else{try{await createSub.mutateAsync(form);setShowModal(false);setEditing(null)}catch(err){console.error(err)}}
+    else{
+      try{await createSub.mutateAsync(form);setShowModal(false);setEditing(null)}catch(err){console.error(err)}
+    }
   }
   const handleScopeConfirm=async(scope)=>{try{await updateSub.mutateAsync({id:pendingEdit.id,data:{...pendingEdit.form,scope}});setShowScopeModal(false);setPendingEdit(null);setPendingForm(null);setEditing(null)}catch(err){console.error(err)}}
   const handleDelete=async(id)=>{if(!window.confirm('Delete this bill?'))return;await deleteSub.mutateAsync(id)}
@@ -212,7 +270,7 @@ function Bills() {
   if(isLoading) return <div className="loading">Loading bills...</div>
   return (
     <div>
-      <div className="page-header"><div><h1 className="page-title">Bills</h1><MonthPicker value={month} onChange={setMonth} /></div><button className="btn-primary" onClick={()=>{setEditing(null);setShowModal(true)}}>+ Add bill</button></div>
+      <div className="page-header"><div><h1 className="page-title">Bills</h1><MonthPicker value={month} onChange={setMonth} /></div><button className="btn-primary" onClick={()=>{setEditing(null);setShowModal(true)}}>+ Add Bill</button></div>
       <div className="grid-4" style={{marginBottom:'1.75rem'}}>
         <div className="card metric-card"><div className="metric-label">Monthly cost</div><div className="metric-value">{formatCurrency(totalMonthly)}</div><div className="metric-sub">across active bills</div></div>
         <div className="card metric-card"><div className="metric-label">Annual cost</div><div className="metric-value">{formatCurrency(totalMonthly*12)}</div><div className="metric-sub">estimated</div></div>

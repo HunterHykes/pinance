@@ -33,7 +33,7 @@ const defaultCharge = (startedOn) => ({
 
 // Schedule table column layout
 // Amount | Account | Label | Started On | Frequency | −/+
-const SCHED_COLS = '110px 120px 2fr 120px 130px 28px'
+const SCHED_COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px) 28px'
 const SCHED_HDRS = ['Amount', 'Account', 'Label', 'Started On', 'Frequency', '']
 
 const headerStyle = {
@@ -167,6 +167,15 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
   const parentCatName = parentCats.find(c => c.id === parentCatId)?.category || ''
   const handleParentChange = (n) => { const cat = parentCats.find(c => c.category === n); setParentCatId(cat?.id || null) }
 
+  // Live conflict: any existing category whose name matches what the user typed,
+  // excluding the current bill's own categories and only relevant for new single-charge bills.
+  const nameConflict = (!initial && !isSplit)
+    ? categories.find(c =>
+        c.category.trim().toLowerCase() === name.trim().toLowerCase() &&
+        c.bill_id !== (initial?.id ?? -1)
+      ) ?? null
+    : null
+
   const handleStartedOnChange = (newDate) => {
     setStartedOn(newDate)
     setSingleCharge(c => ({ ...c, anchor_date: c.anchor_date === startedOn ? newDate : c.anchor_date, effective_from: c.effective_from === startedOn ? newDate : c.effective_from }))
@@ -210,6 +219,8 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
     : chargeMonthly({ ...singleCharge, amount: parseFloat(singleCharge.amount) || 0 })
   const annualTotal  = monthlyTotal * 12
 
+  const [mergePending, setMergePending] = useState(null) // { formData, conflict }
+
   const handleSubmit = (e) => {
     e.preventDefault()
     let finalCharges
@@ -221,6 +232,13 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
       finalCharges = charges.map(c => ({ ...c, id: c.id || undefined, amount: parseFloat(c.amount), anchor_date: c.anchor_date || startedOn, effective_from: c.effective_from || startedOn }))
     }
     const formData = { name, description, parent_category_id: parentCatId || null, color: color || null, account_id: accountId || null, status, pause_until: status === 'paused' ? pauseUntil || null : null, started_on: startedOn, notes: description, charges: finalCharges }
+
+    // Client-side conflict check: only for new single-charge bills
+    if (!initial && finalCharges.length === 1 && nameConflict) {
+      setMergePending({ formData, conflict: nameConflict })
+      return
+    }
+
     const dirty = finalCharges.filter(c => c.id && c._dirty)
     if (dirty.length > 0) { setPendingForm(formData); setIntentQueue(dirty); setIntentIndex(0); setResolved([]) }
     else onSave(formData)
@@ -245,7 +263,7 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
   return (
     <>
       <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentQueue && onClose()}>
-        <div className="modal" style={{ maxWidth: '760px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal" style={{ maxWidth: '860px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexShrink: 0 }}>
@@ -279,6 +297,12 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
                   </div>
                 </div>
               </div>
+              {nameConflict && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span style={{ color: 'var(--accent)', flexShrink: 0 }}>ⓘ</span>
+                  A category named <strong style={{ color: 'var(--text)', margin: '0 3px' }}>{nameConflict.category}</strong> already exists — you'll be asked to merge or create new on save.
+                </div>
+              )}
 
               {/* ── Schedule table ── */}
               <div className="modal-section-header">
@@ -395,6 +419,32 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
           </div>
         </div>
       </div>
+
+      {mergePending && (
+        <div className="modal-bg">
+          <div className="modal" style={{ maxWidth: '420px' }}>
+            <h3 className="modal-title">Category name conflict</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              A budget category named <strong>"{mergePending.conflict.category}"</strong> already exists. What would you like to do?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button className="btn-ghost" style={{ textAlign: 'left', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '3px' }}
+                onClick={() => { const fd = mergePending.formData; setMergePending(null); onSave({ ...fd, merge_category_id: mergePending.conflict.id }) }}>
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>Merge with existing category</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Link this bill to "{mergePending.conflict.category}" — no duplicate created</span>
+              </button>
+              <button className="btn-ghost" style={{ textAlign: 'left', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '3px' }}
+                onClick={() => { const fd = mergePending.formData; setMergePending(null); onSave(fd) }}>
+                <span style={{ fontWeight: 600, fontSize: '13px' }}>Create a new category</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Adds a separate "{mergePending.conflict.category} (2)" category</span>
+              </button>
+            </div>
+            <div className="modal-btns" style={{ marginTop: '16px' }}>
+              <button className="btn-ghost" onClick={() => setMergePending(null)}>Back</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {intentQueue && intentQueue[intentIndex] && (
         <ChangeIntentModal

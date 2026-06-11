@@ -10,7 +10,6 @@ import { createPortal } from 'react-dom'
 // No spinner arrows (suppressed via .currency-input CSS class).
 
 export function CurrencyInput({ value, onChange, placeholder = '0.00', required, style, inputStyle, className }) {
-  // Format a raw numeric string to always show two decimal places + commas.
   const format = (v) => {
     if (v === '' || v == null) return ''
     const n = parseFloat(String(v).replace(/,/g, ''))
@@ -18,31 +17,34 @@ export function CurrencyInput({ value, onChange, placeholder = '0.00', required,
     return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
-  const [display, setDisplay] = useState(() => format(value))
-
-  // Keep display in sync when value changes externally (e.g. modal reset).
-  // Only reformat if the numeric value actually changed to avoid clobbering
-  // in-progress typing.
+  const [display,  setDisplay]  = useState(() => format(value))
+  const [focused,  setFocused]  = useState(false)
   const prevValue = useRef(value)
-  if (value !== prevValue.current) {
+
+  // Sync external value changes (e.g. modal reset) only when not focused.
+  // While the user is typing we never touch display — they own it.
+  if (!focused && value !== prevValue.current) {
     prevValue.current = value
-    const formatted = format(value)
-    if (formatted !== display) setDisplay(formatted)
+    setDisplay(format(value))
   }
 
   const handleChange = (e) => {
     const raw = e.target.value
-    // Allow digits, a single decimal point, and commas while typing
     const cleaned = raw.replace(/[^0-9.,]/g, '')
-    // Prevent more than one decimal point
     const parts = cleaned.replace(/,/g, '').split('.')
     const numeric = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : cleaned.replace(/,/g, '')
     setDisplay(cleaned)
     onChange(numeric)
   }
 
+  const handleFocus = () => {
+    setFocused(true)
+    prevValue.current = value
+  }
+
   const handleBlur = () => {
-    // On blur, reformat to canonical "1,234.56" form
+    setFocused(false)
+    prevValue.current = value
     setDisplay(format(value))
   }
 
@@ -58,6 +60,7 @@ export function CurrencyInput({ value, onChange, placeholder = '0.00', required,
         required={required}
         style={inputStyle}
         onChange={handleChange}
+        onFocus={handleFocus}
         onBlur={handleBlur}
       />
     </div>

@@ -90,7 +90,15 @@ function createIncomeCategories(userId, income, schedules, parentCategoryId) {
     const conflict = db.prepare(
       'SELECT id FROM budget_categories WHERE user_id = ? AND category = ? AND (income_id IS NULL OR income_id != ?)'
     ).get(userId, income.name, income.id)
-    if (conflict) groupName = `${income.name} (income)`
+    if (conflict) {
+      let suffix = 2
+      while (db.prepare(
+        'SELECT id FROM budget_categories WHERE user_id = ? AND category = ?'
+      ).get(userId, `${income.name} (${suffix})`)) {
+        suffix++
+      }
+      groupName = `${income.name} (${suffix})`
+    }
 
     const r = db.prepare(`
       INSERT INTO budget_categories
@@ -115,7 +123,15 @@ function createIncomeCategories(userId, income, schedules, parentCategoryId) {
       const collision = db.prepare(
         'SELECT id FROM budget_categories WHERE user_id = ? AND category = ? AND id != ?'
       ).get(userId, safeLeafName, leafId)
-      if (collision) safeLeafName = `${leafName} (${income.id})`
+      if (collision) {
+        let suffix = 2
+        while (db.prepare(
+          'SELECT id FROM budget_categories WHERE user_id = ? AND category = ?'
+        ).get(userId, `${leafName} (${suffix})`)) {
+          suffix++
+        }
+        safeLeafName = `${leafName} (${suffix})`
+      }
       db.prepare('UPDATE budget_categories SET category = ?, color = ?, parent_id = ? WHERE id = ?')
         .run(safeLeafName, income.color || null, groupCatId, leafId)
     } else {
@@ -123,7 +139,15 @@ function createIncomeCategories(userId, income, schedules, parentCategoryId) {
       const nameConflict = db.prepare(
         'SELECT id FROM budget_categories WHERE user_id = ? AND category = ?'
       ).get(userId, insertName)
-      if (nameConflict) insertName = `${leafName} (${income.id})`
+      if (nameConflict) {
+        let suffix = 2
+        while (db.prepare(
+          'SELECT id FROM budget_categories WHERE user_id = ? AND category = ?'
+        ).get(userId, `${leafName} (${suffix})`)) {
+          suffix++
+        }
+        insertName = `${leafName} (${suffix})`
+      }
 
       const r = db.prepare(`
         INSERT INTO budget_categories

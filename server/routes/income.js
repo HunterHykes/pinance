@@ -62,7 +62,8 @@ router.get('/', (req, res) => {
 router.post('/', (req, res) => {
   const userId = req.session.userId
   const { name, description, parent_category_id, account_id,
-          color, status, started_on, notes, schedules } = req.body
+          color, status, started_on, notes, schedules,
+          merge_category_id } = req.body
 
   if (!name || !started_on)
     return res.status(400).json({ error: 'name and started_on are required' })
@@ -85,7 +86,6 @@ router.post('/', (req, res) => {
     if (!cat) return res.status(400).json({ error: 'Parent category not found' })
   }
 
-  let incomeId
   db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO income_sources
@@ -104,7 +104,6 @@ router.post('/', (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     for (const s of schedules) {
-      // Per-schedule account falls back to source-level account if not set
       const scheduleAccountId = s.account_id || account_id || null
       insertSchedule.run(incomeId, userId, s.label, parseFloat(s.amount),
         s.frequency, s.custom_days || null,
@@ -113,12 +112,31 @@ router.post('/', (req, res) => {
     }
   })()
 
-  const income    = db.prepare('SELECT * FROM income_sources WHERE id = ?').get(incomeId)
+  const income      = db.prepare('SELECT * FROM income_sources WHERE id = ?').get(incomeId)
   const dbSchedules = db.prepare('SELECT * FROM income_schedules WHERE income_id = ?').all(incomeId)
 
   try {
     db.transaction(() => {
-      createIncomeCategories(userId, income, dbSchedules, resolvedParentId)
+      if (merge_category_id && dbSchedules.length === 1) {
+        // Merge: point the existing category at this income source
+        db.prepare(`
+          UPDATE budget_categories
+          SET income_id = ?, is_income = 1, color = COALESCE(?, color), category = ?
+          WHERE id = ? AND user_id = ?
+        `).run(incomeId, color || null, name, merge_category_id, userId)
+
+        db.prepare('UPDATE income_schedules SET budget_category_id = ? WHERE id = ?')
+          .run(merge_category_id, dbSchedules[0].id)
+
+        const monthlyAmt = dbSchedules[0].amount * occurrencesPerMonth(dbSchedules[0].frequency, dbSchedules[0].custom_days)
+        db.prepare(`
+          INSERT INTO budget_template (user_id, budget_id, monthly_limit)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id, budget_id) DO UPDATE SET monthly_limit = excluded.monthly_limit
+        `).run(userId, merge_category_id, monthlyAmt)
+      } else {
+        createIncomeCategories(userId, income, dbSchedules, resolvedParentId)
+      }
     })()
   } catch (err) {
     console.error('Income category creation error:', err.message)
@@ -139,6 +157,7 @@ router.put('/:id', (req, res) => {
   const userId   = req.session.userId
   const incomeId = req.params.id
   const { name, description, account_id, parent_category_id, status, notes, scope,
+          color,
           schedules: incomingSchedules } = req.body
 
   const existing = db.prepare(
@@ -158,13 +177,19 @@ router.put('/:id', (req, res) => {
   db.prepare(`
     UPDATE income_sources SET
       name = ?, description = ?, account_id = ?, parent_category_id = ?,
+      color = ?,
       status = ?,
       stopped_on = CASE WHEN ? = 'stopped' AND stopped_on IS NULL
                    THEN date('now') ELSE stopped_on END,
       notes = ?
     WHERE id = ? AND user_id = ?
   `).run(name, description || null, account_id || null, parent_category_id || null,
+         color || null,
          status, status, notes || null, incomeId, userId)
+
+  // Sync color to linked budget_categories
+  db.prepare(`UPDATE budget_categories SET color = ? WHERE income_id = ? AND user_id = ?`)
+    .run(color || null, incomeId, userId)
 
   const income = db.prepare('SELECT * FROM income_sources WHERE id = ?').get(incomeId)
 
