@@ -793,6 +793,7 @@ function ProjectorLegend({ series, hidden, onToggle, today }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Projector() {
+  document.title = 'Pinance | Projector'
   const today = new Date().toISOString().slice(0, 7)
 
   const { data: accounts    = [] } = useAccounts()

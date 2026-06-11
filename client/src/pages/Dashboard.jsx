@@ -402,6 +402,7 @@ function NetWorthChart() {
 }
 
 function Dashboard() {
+  document.title = 'Pinance | Dashboard'
   const month = currentMonth()
 
   const { data: accounts = [],     isLoading: loadingAccounts }     = useAccounts()

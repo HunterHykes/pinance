@@ -367,6 +367,7 @@ function TxnRow({ txn, allCategories, accountsById, onEdit, onDelete, showSplitC
 }
 
 function Transactions() {
+  document.title = 'Pinance | Transactions'
   const [dateFrom, setDateFrom] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10) })
   const [dateTo,   setDateTo]   = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10) })
   const [showModal, setShowModal]   = useState(false)

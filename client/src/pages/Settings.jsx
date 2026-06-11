@@ -909,6 +909,7 @@ const TABS = [
 // ── Main Settings page ────────────────────────────────────────────────────────
 
 function Settings() {
+  document.title = 'Pinance | Settings'
   const [activeTab, setActiveTab] = useState('plaid')
 
   return (

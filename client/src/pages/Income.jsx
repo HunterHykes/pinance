@@ -319,6 +319,7 @@ function IncomeTableRow({ src, categories, accounts, month, onEdit, onDelete, on
 }
 
 function Income() {
+  document.title = 'Pinance | Income'
   const [showModal,setShowModal]=useState(false),[editing,setEditing]=useState(null),[month,setMonth]=useState(currentMonth()),[statusFilter,setStatusFilter]=useState('active'),[openFilter,setOpenFilter]=useState(false)
   const filterRef=useRef(null)
   const {data:sources=[],isLoading}=useIncomeSources(),{data:categories=[]}=useBudget({}),{data:accounts=[]}=useAccounts()

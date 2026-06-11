@@ -409,6 +409,7 @@ function TemplateRow({ node, allCategories, depth = 0, onEdit, onDelete, dragSta
 // ── Main Budget page ──────────────────────────────────────────────────────────
 
 function Budget() {
+  document.title = 'Pinance | Budget'
   const [searchParams, setSearchParams] = useSearchParams()
   const [view, setView] = useState(() =>
     searchParams.get('view') === 'template' ? 'template' : 'monthly'

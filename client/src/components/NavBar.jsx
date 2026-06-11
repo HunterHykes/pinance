@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { logout as logoutApi } from '../api'
+import { queryClient } from '../main'
 
 // ── User dropdown — click to open, outside click to close ────────────────────
 
@@ -211,6 +212,7 @@ function UserDropdown({ username }) {
   const handleLogout = async () => {
     setOpen(false)
     try { await logoutApi() } catch (_) {}
+    queryClient.clear()
     logout()
     navigate('/login')
   }

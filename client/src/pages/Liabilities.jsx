@@ -998,6 +998,7 @@ function LiabilityList({ liabilities, onSelect, onEdit, onDelete, onAdd }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Liabilities() {
+  document.title = 'Pinance | Liabilities'
   const [selectedLiability, setSelectedLiability] = useState(null)
   const [showModal,          setShowModal]         = useState(false)
   const [editingLiability,   setEditingLiability]  = useState(null)

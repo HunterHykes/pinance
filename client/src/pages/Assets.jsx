@@ -425,6 +425,7 @@ function AddDropdown({ onAddAsset, onAddLiability, onAddType }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Assets() {
+  document.title = 'Pinance | Assets'
   const [showAssetModal,     setShowAssetModal]     = useState(false)
   const [showLiabilityModal, setShowLiabilityModal] = useState(false)
   const [editingAsset,       setEditingAsset]       = useState(null)

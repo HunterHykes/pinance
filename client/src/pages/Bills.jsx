@@ -368,6 +368,7 @@ function BillTableRow({ sub, categories, accounts, month, onEdit, onDelete, onUp
 }
 
 function Bills() {
+  document.title = 'Pinance | Bills'
   const [month,setMonth]=useState(currentMonth()),[showModal,setShowModal]=useState(false),[editing,setEditing]=useState(null),[statusFilter,setStatusFilter]=useState('active'),[openFilter,setOpenFilter]=useState(false)
   const filterRef=useRef(null)
   const {data:subs=[],isLoading}=useBills(),{data:categories=[]}=useBudget({}),{data:accounts=[]}=useAccounts()

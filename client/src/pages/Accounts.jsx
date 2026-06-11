@@ -995,6 +995,7 @@ const PLAID_ITEM_COLS = TYPE_COLS.map(col =>
 )
 
 function Accounts() {
+  document.title = 'Pinance | Accounts'
   const [showModal,    setShowModal]    = useState(false)
   const [editing,      setEditing]      = useState(null)  // account being edited
   const [showEditPref,  setShowEditPref]  = useState(false)
