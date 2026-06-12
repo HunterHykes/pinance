@@ -705,7 +705,7 @@ function BudgetTab() {
   const { data: mappings  = [], isLoading: loadingMaps } = useCategoryMap()
   const { data: budget    = [] }                         = useBudget({})
 
-  const [rowsOpen, setRowsOpen] = useState(true)
+  const [rowsOpen, setRowsOpen] = useState(false)
 
   const saveMap      = useSaveCategoryMap()
   const applyMap     = useApplyCategoryMap()
@@ -901,8 +901,8 @@ function AccountTab() {
 // ── Vertical tab sidebar ──────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'plaid',   label: 'Plaid'   },
   { id: 'budget',  label: 'Budget'  },
+  { id: 'plaid',   label: 'Plaid'   },
   { id: 'account', label: 'Account' },
 ]
 
@@ -910,7 +910,7 @@ const TABS = [
 
 function Settings() {
   document.title = 'Pinance | Settings'
-  const [activeTab, setActiveTab] = useState('plaid')
+  const [activeTab, setActiveTab] = useState('budget')
 
   return (
     <div>

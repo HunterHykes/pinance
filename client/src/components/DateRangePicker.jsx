@@ -375,7 +375,7 @@ export function PageDateRangeTrigger({ from, to, onChange, className = '' }) {
 //   value    — "YYYY-MM" string
 //   onChange — called with new "YYYY-MM" string
 
-export function MonthPicker({ value, onChange }) {
+export function MonthPicker({ value, onChange, hideArrows = false }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -429,16 +429,18 @@ export function MonthPicker({ value, onChange }) {
     <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
 
       {/* ‹ previous month */}
-      <button
-        type="button"
-        onClick={() => stepMonth(-1)}
-        style={navBtnStyle}
-        onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)' }}
-        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
-        aria-label="Previous month"
-      >
-        ‹
-      </button>
+      {!hideArrows && (
+        <button
+          type="button"
+          onClick={() => stepMonth(-1)}
+          style={navBtnStyle}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+          aria-label="Previous month"
+        >
+          ‹
+        </button>
+      )}
 
       {/* Month/year label — click to open grid */}
       <button
@@ -465,16 +467,18 @@ export function MonthPicker({ value, onChange }) {
       </button>
 
       {/* › next month */}
-      <button
-        type="button"
-        onClick={() => stepMonth(1)}
-        style={navBtnStyle}
-        onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)' }}
-        onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
-        aria-label="Next month"
-      >
-        ›
-      </button>
+      {!hideArrows && (
+        <button
+          type="button"
+          onClick={() => stepMonth(1)}
+          style={navBtnStyle}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)' }}
+          aria-label="Next month"
+        >
+          ›
+        </button>
+      )}
 
       {/* Month grid popover */}
       {open && (

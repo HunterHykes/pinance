@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
@@ -10,6 +9,7 @@ import { useAccounts } from '../hooks/useAccounts'
 import { useAssets } from '../hooks/useAssets'
 import { useLiabilities } from '../hooks/useLiabilities'
 import { formatCurrency } from '../utils'
+import { MonthPicker } from '../components/DateRangePicker'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -133,7 +133,7 @@ function useProjection(from, to, enabled) {
 // min/max are integer indices into the months array.
 // Returns [leftIdx, rightIdx].
 
-function DualRangeSlider({ min, max, left, right, onChange, onCommit, months }) {
+function DualRangeSlider({ min, max, left, right, onChange, onCommit, months, fromPicker, toPicker }) {
   const trackRef = useRef(null)
   const pending  = useRef({ left, right })
 
@@ -191,13 +191,13 @@ function DualRangeSlider({ min, max, left, right, onChange, onCommit, months }) 
 
   return (
     <div style={{ padding: '8px 12px 4px' }}>
-      {/* Date labels */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '13px' }}>
-        <span style={{ fontWeight: 600, color: 'var(--text)' }}>{fmtMonth(months[left])}</span>
+      {/* Date labels — rendered as MonthPickers when provided, else plain text */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <span>{fromPicker ?? <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{fmtMonth(months[left])}</span>}</span>
         <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
           {monthsBetween(months[left], months[right])} months
         </span>
-        <span style={{ fontWeight: 600, color: 'var(--text)' }}>{fmtMonth(months[right])}</span>
+        <span>{toPicker ?? <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{fmtMonth(months[right])}</span>}</span>
       </div>
 
       {/* Track */}
@@ -301,420 +301,224 @@ function RateInput({ label, value, onChange, suffix = '%', step = '0.1', min = '
 }
 
 // Dot-chevron expand button — same pattern as Assets page
-function DotBtn({ color, expandable, expanded, onClick }) {
-  return (
-    <button
-      className={'budget-dot-btn' + (expandable ? ' budget-dot-btn--expandable' : '')}
-      style={{ background: color, flexShrink: 0 }}
-      onClick={expandable ? onClick : undefined}
-    >
-      {expandable && (
-        <svg className={'dot-chevron' + (expanded ? ' dot-chevron--open' : '')}
-          width="8" height="8" viewBox="0 0 8 8" fill="none">
-          <path d="M1.5 3L4 5.5L6.5 3" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
-    </button>
-  )
-}
+// ── Unified projection table constants ────────────────────────────────────────
+const PROJ_COLS = 'minmax(0,1fr) 100px 80px 90px 90px minmax(120px,160px)'
+const hdrStyle  = { fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-tertiary)' }
 
-// Shared layout for the projection inputs cell — label left, input+suffix right, note below
-function InputCell({ rows, note }) {
+function SectionDivider({ label }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-      {rows.map((row, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {row.label && (
-            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', width: '52px', flexShrink: 0 }}>
-              {row.label}
-            </span>
-          )}
-          {row.content}
-        </div>
-      ))}
-      {note && <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', paddingTop: '1px' }}>{note}</span>}
+    <div style={{ display: 'grid', gridTemplateColumns: PROJ_COLS, gap: '12px', padding: '6px 1.5rem', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', borderTop: '1px solid var(--border)' }}>
+      <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: 'var(--text-tertiary)', gridColumn: '1 / -1' }}>{label}</span>
     </div>
   )
 }
 
-function AccountInputRow({ account, input, currentBalance, onSave }) {
-  const needsGrowth = ['Investment', 'Retirement', 'Savings', 'Checking'].includes(account.type)
-  const isCC        = account.type === 'Credit card'
-  const save = (patch) => onSave('account', account.id, { ...input, ...patch })
+function ProjectionRow({ dotColor, name, sub, currentVal, valColor, input, onSave, onLiabilityUpdate, liability }) {
+  const save  = (patch) => onSave({ ...input, ...patch })
+  const isCC  = sub?.includes('Credit card') || sub?.includes('credit line')
+  const isLiab = !!liability
+  const hasTerms = isLiab && !!(liability.original_principal && liability.interest_rate && liability.loan_term_months)
 
-  const inputRows = []
-  if (needsGrowth) inputRows.push({
-    label: ['Investment','Retirement'].includes(account.type) ? 'Return' : 'Growth',
-    content: <RateInput value={input?.growth_rate ?? null} onChange={v => save({ growth_rate: v })} />,
-  })
-  if (isCC) {
-    inputRows.push({
-      label: 'APR',
-      content: <RateInput value={input?.apr ?? null} onChange={v => save({ apr: v })} />,
-    })
-    inputRows.push({
-      label: 'Payment',
-      content: (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <select value={input?.cc_payment_mode || 'full'}
-            onChange={e => save({ cc_payment_mode: e.target.value })}
-            style={{ fontSize: '12px', padding: '3px 6px', width: 'auto' }}>
-            <option value="full">Pay in full</option>
-            <option value="minimum">Minimum</option>
-            <option value="fixed">Fixed $</option>
-          </select>
-          {(input?.cc_payment_mode === 'minimum' || input?.cc_payment_mode === 'fixed') && (
-            <RateInput value={input?.cc_min_payment ?? null}
-              onChange={v => save({ cc_min_payment: v })} suffix="$" placeholder="0" step="1" />
-          )}
-        </div>
-      ),
+  // Local liability terms state
+  const [expanded,   setExpanded]   = useState(false)
+  const [balance,    setBalance]    = useState(liability?.balance != null ? String(liability.balance) : '')
+  const [rate,       setRate]       = useState(liability?.interest_rate != null ? String((liability.interest_rate * 100).toFixed(3)) : '')
+  const [term,       setTerm]       = useState(liability?.loan_term_months != null ? String(liability.loan_term_months) : '')
+  const [origDate,   setOrigDate]   = useState(liability?.origination_date || '')
+  const [monthlyPmt, setMonthlyPmt] = useState(liability?.monthly_payment != null ? String(liability.monthly_payment) : '')
+
+  const saveTerms = () => {
+    if (!onLiabilityUpdate || !liability) return
+    onLiabilityUpdate(liability.id, {
+      name: liability.name, type: liability.type,
+      balance: parseFloat(balance) || liability.balance,
+      asset_id: liability.asset_id || null, category_id: liability.category_id || null,
+      original_principal: liability.original_principal || null,
+      interest_rate: rate ? parseFloat(rate) / 100 : null,
+      loan_term_months: term ? parseInt(term) : null,
+      origination_date: origDate || null,
+      monthly_payment: monthlyPmt ? parseFloat(monthlyPmt) : null,
+      notes: liability?.notes || null,
     })
   }
 
-  return (
-    <div className="acct-tbl-row">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: ACCOUNT_COLORS[account.type] || '#888', flexShrink: 0, display: 'inline-block' }} />
-        <div style={{ minWidth: 0 }}>
-          <span className="budget-cat-name">{account.name}</span>
-          <div className="budget-cat-sub">{account.type}</div>
-        </div>
-      </div>
-      <div style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600,
-        color: account.type === 'Credit card' ? 'var(--red)' : 'var(--text)' }}>
-        {currentBalance != null ? formatCurrency(currentBalance) : '—'}
-      </div>
-      <InputCell rows={inputRows} note={needsGrowth ? 'cmpd. monthly' : null} />
-    </div>
-  )
-}
-
-function AssetInputRow({ asset, assetInput, linkedLiabilities, liabilityInputs, currentValues, onSave }) {
-  const [expanded, setExpanded] = useState(false)
-  const color       = ASSET_COLORS[asset.type] || '#888'
-  const hasLinked   = linkedLiabilities.length > 0
-  const saveAsset   = (patch) => onSave('asset', asset.id, { ...assetInput, ...patch })
-  const saveLiab    = (liab, patch) => onSave('liability', liab.id, { ...liabilityInputs[liab.id], ...patch })
-
-  // Equity = asset current value − sum of linked liability balances
-  const assetVal  = currentValues?.assets?.[asset.id]
-  const liabTotal = linkedLiabilities.reduce((s, l) => s + (currentValues?.liabilities?.[l.id] ?? l.balance), 0)
-  const equity    = assetVal != null ? assetVal - liabTotal : null
+  const rateVal    = input?.growth_rate ?? input?.apr ?? null
+  const rateChange = (v) => {
+    if (input?.apr !== undefined || isCC || isLiab) save({ apr: v })
+    else save({ growth_rate: v })
+  }
 
   return (
     <>
-      {/* Parent equity row */}
-      <div className="acct-tbl-row">
+      <div className="acct-tbl-row" style={{ padding: '5px 1.5rem', alignItems: 'center' }}>
+        {/* Name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <DotBtn color={color} expandable={hasLinked} expanded={expanded} onClick={() => setExpanded(e => !e)} />
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, flexShrink: 0, display: 'inline-block' }} />
           <div style={{ minWidth: 0 }}>
-            <span className="budget-cat-name">{asset.name}{hasLinked ? ' (equity)' : ''}</span>
-            <div className="budget-cat-sub">{asset.type}</div>
+            <span className="budget-cat-name">{name}</span>
+            {sub && <div className="budget-cat-sub">{sub}{hasTerms && <span style={{ color: 'var(--text-tertiary)', marginLeft: '4px' }}>· amortized</span>}</div>}
           </div>
         </div>
-        <div style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600,
-          color: equity != null && equity < 0 ? 'var(--red)' : 'var(--text)' }}>
-          {equity != null ? formatCurrency(equity) : (assetVal != null ? formatCurrency(assetVal) : '—')}
+        {/* Current */}
+        <div style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600, color: valColor || 'var(--text)' }}>
+          {currentVal != null ? formatCurrency(currentVal) : '—'}
         </div>
-        <InputCell
-          rows={[{ label: 'Appreciation', content: <RateInput value={assetInput?.growth_rate ?? null} onChange={v => saveAsset({ growth_rate: v })} /> }]}
-          note="cmpd. monthly"
-        />
+        {/* Rate */}
+        {hasTerms
+          ? <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>amortized</div>
+          : <RateInput value={rateVal} onChange={rateChange} />
+        }
+        {/* Period — Monthly / Annual */}
+        {hasTerms
+          ? <div />
+          : <select value={input?.rate_period || 'annual'} onChange={e => save({ rate_period: e.target.value })}
+              style={{ fontSize: '12px', padding: '3px 6px' }}>
+              <option value="annual">Annual</option>
+              <option value="quarterly">Quarterly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+        }
+        {/* Compounding — Simple / Compound */}
+        {hasTerms
+          ? <div />
+          : <select value={input?.compounding || 'compound'} onChange={e => save({ compounding: e.target.value })}
+              style={{ fontSize: '12px', padding: '3px 6px' }}>
+              <option value="compound">Compound</option>
+              <option value="simple">Simple</option>
+            </select>
+        }
+        {/* Payment / Mode */}
+        <div>
+          {isCC && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <select value={input?.cc_payment_mode || 'full'} onChange={e => save({ cc_payment_mode: e.target.value })}
+                style={{ fontSize: '12px', padding: '3px 6px', width: 'auto' }}>
+                <option value="full">Pay in full</option>
+                <option value="minimum">Minimum</option>
+                <option value="fixed">Fixed $</option>
+              </select>
+              {(input?.cc_payment_mode === 'minimum' || input?.cc_payment_mode === 'fixed') && (
+                <RateInput value={input?.cc_min_payment ?? null} onChange={v => save({ cc_min_payment: v })} suffix="$" placeholder="0" step="1" />
+              )}
+            </div>
+          )}
+          {isLiab && !isCC && !hasTerms && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <select value={input?.cc_payment_mode || 'full'} onChange={e => save({ cc_payment_mode: e.target.value })}
+                style={{ fontSize: '12px', padding: '3px 6px', width: 'auto' }}>
+                <option value="full">Pay in full</option>
+                <option value="minimum">Minimum</option>
+                <option value="fixed">Fixed $</option>
+              </select>
+            </div>
+          )}
+          {isLiab && (
+            <button type="button" className="btn-ghost" style={{ fontSize: '11px', padding: '2px 8px', marginTop: isCC || !hasTerms ? '4px' : '0' }}
+              onClick={() => setExpanded(e => !e)}>
+              {expanded ? '▲' : '▼'} terms
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Expanded children */}
-      {expanded && (
-        <>
-          {/* Asset child */}
-          <div className="acct-tbl-row" style={{ paddingLeft: '2.5rem', background: 'var(--bg-secondary)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-              <DotBtn color={color} expandable={false} />
-              <div style={{ minWidth: 0 }}>
-                <span className="budget-cat-name" style={{ fontSize: '12px' }}>{asset.name}</span>
-                <div className="budget-cat-sub">Asset value</div>
-              </div>
-            </div>
-            <div style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600 }}>
-              {assetVal != null ? formatCurrency(assetVal) : '—'}
-            </div>
-            <div />
+      {/* Expanded liability terms */}
+      {expanded && isLiab && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', padding: '10px 1.5rem 12px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontSize: '11px' }}>Current balance ($)</label>
+            <input type="number" value={balance} onChange={e => setBalance(e.target.value)} onBlur={saveTerms} step="0.01" min="0" style={{ fontSize: '12px' }} />
           </div>
-
-          {/* Linked liability children */}
-          {linkedLiabilities.map(liab => {
-            const liabInput = liabilityInputs[liab.id] || {}
-            const liabBal   = currentValues?.liabilities?.[liab.id] ?? liab.balance
-            const hasTerms  = !!(liab.original_principal && liab.interest_rate && liab.loan_term_months)
-            const lColor    = LIABILITY_COLORS[liab.type] || '#888'
-            return (
-              <div key={liab.id} className="acct-tbl-row" style={{ paddingLeft: '2.5rem', background: 'var(--bg-secondary)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                  <DotBtn color={lColor} expandable={false} />
-                  <div style={{ minWidth: 0 }}>
-                    <span className="budget-cat-name" style={{ fontSize: '12px' }}>{liab.name}</span>
-                    <div className="budget-cat-sub">{liab.type}{hasTerms ? ' · amortized' : ''}</div>
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600, color: 'var(--red)' }}>
-                  {formatCurrency(liabBal)}
-                </div>
-                {!hasTerms
-                  ? <InputCell rows={[
-                      { label: 'APR', content: <RateInput value={liabInput.apr ?? null} onChange={v => saveLiab(liab, { apr: v })} /> },
-                    ]} />
-                  : <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>amortized</div>
-                }
-              </div>
-            )
-          })}
-        </>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontSize: '11px' }}>Interest rate (APR %)</label>
+            <input type="number" value={rate} onChange={e => setRate(e.target.value)} onBlur={saveTerms} step="0.001" min="0" max="100" style={{ fontSize: '12px' }} />
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontSize: '11px' }}>Term (months)</label>
+            <input type="number" value={term} onChange={e => setTerm(e.target.value)} onBlur={saveTerms} min="1" style={{ fontSize: '12px' }} />
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontSize: '11px' }}>Origination date</label>
+            <input type="date" value={origDate} onChange={e => setOrigDate(e.target.value)} onBlur={saveTerms} style={{ fontSize: '12px' }} />
+          </div>
+          <div className="form-group" style={{ margin: 0 }}>
+            <label style={{ fontSize: '11px' }}>Monthly payment ($)</label>
+            <input type="number" value={monthlyPmt} onChange={e => setMonthlyPmt(e.target.value)} onBlur={saveTerms} step="0.01" min="0" style={{ fontSize: '12px' }} />
+          </div>
+        </div>
       )}
     </>
   )
 }
 
-function LiabilityInputRow({ liability, input, currentBalance, onSave, onLiabilityUpdate }) {
-  const saveInput = (patch) => onSave('liability', liability.id, { ...input, ...patch })
-  const color     = LIABILITY_COLORS[liability.type] || '#888'
-
-  // Local state for loan term fields — saved on blur to liabilities table
-  const [balance,    setBalance]    = useState(liability.balance != null ? String(liability.balance) : '')
-  const [rate,       setRate]       = useState(liability.interest_rate != null ? String((liability.interest_rate * 100).toFixed(3)) : '')
-  const [term,       setTerm]       = useState(liability.loan_term_months != null ? String(liability.loan_term_months) : '')
-  const [origDate,   setOrigDate]   = useState(liability.origination_date || '')
-  const [monthlyPmt, setMonthlyPmt] = useState(liability.monthly_payment != null ? String(liability.monthly_payment) : '')
-  const [expanded,   setExpanded]   = useState(false)
-
-  const saveTerms = () => {
-    onLiabilityUpdate(liability.id, {
-      name:               liability.name,
-      type:               liability.type,
-      balance:            parseFloat(balance) || liability.balance,
-      asset_id:           liability.asset_id   || null,
-      category_id:        liability.category_id || null,
-      original_principal: liability.original_principal || null,
-      interest_rate:      rate       ? parseFloat(rate) / 100    : null,
-      loan_term_months:   term       ? parseInt(term)             : null,
-      origination_date:   origDate   || null,
-      monthly_payment:    monthlyPmt ? parseFloat(monthlyPmt)     : null,
-      notes:              liability.notes || null,
-    })
-  }
-
-  const hasTerms     = !!(liability.original_principal && liability.interest_rate && liability.loan_term_months)
-  const isCreditLine = !hasTerms
-
-  return (
-    <div>
-      {/* Main grid row */}
-      <div className="acct-tbl-row">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0, display: 'inline-block' }} />
-          <div style={{ minWidth: 0 }}>
-            <span className="budget-cat-name">{liability.name}</span>
-            <div className="budget-cat-sub">
-              {liability.type}
-              {hasTerms && <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px' }}>· amortized</span>}
-            </div>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', fontSize: '13px', fontWeight: 600, color: 'var(--red)' }}>
-          {formatCurrency(currentBalance ?? liability.balance)}
-        </div>
-        <InputCell
-          rows={[
-            ...(isCreditLine ? [
-              { label: 'APR', content: <RateInput value={input?.apr ?? null} onChange={v => saveInput({ apr: v })} /> },
-              { label: 'Payment', content: (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <select value={input?.cc_payment_mode || 'full'}
-                    onChange={e => saveInput({ cc_payment_mode: e.target.value })}
-                    style={{ fontSize: '12px', padding: '3px 6px', width: 'auto' }}>
-                    <option value="full">Pay in full</option>
-                    <option value="minimum">Minimum</option>
-                    <option value="fixed">Fixed $</option>
-                  </select>
-                  {(input?.cc_payment_mode === 'minimum' || input?.cc_payment_mode === 'fixed') && (
-                    <RateInput value={input?.cc_min_payment ?? null}
-                      onChange={v => saveInput({ cc_min_payment: v })} suffix="$" placeholder="0" step="1" />
-                  )}
-                </div>
-              )},
-            ] : []),
-            { label: '', content: (
-              <button type="button" className="btn-ghost" style={{ fontSize: '11px', padding: '2px 8px' }}
-                onClick={() => setExpanded(e => !e)}>
-                {expanded ? '▲' : '▼'} terms
-              </button>
-            )},
-          ]}
-        />
-      </div>
-
-      {/* Expanded loan term fields */}
-      {expanded && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', padding: '10px 0 12px 16px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: '6px' }}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontSize: '11px' }}>Current balance ($)</label>
-            <input type="number" value={balance} onChange={e => setBalance(e.target.value)}
-              onBlur={saveTerms} step="0.01" min="0" style={{ fontSize: '12px' }} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontSize: '11px' }}>Interest rate (APR %)</label>
-            <input type="number" value={rate} onChange={e => setRate(e.target.value)}
-              onBlur={saveTerms} step="0.001" min="0" max="100" style={{ fontSize: '12px' }} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontSize: '11px' }}>Term (months)</label>
-            <input type="number" value={term} onChange={e => setTerm(e.target.value)}
-              onBlur={saveTerms} min="1" style={{ fontSize: '12px' }} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontSize: '11px' }}>Origination date</label>
-            <input type="date" value={origDate} onChange={e => setOrigDate(e.target.value)}
-              onBlur={saveTerms} style={{ fontSize: '12px' }} />
-          </div>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontSize: '11px' }}>Monthly payment ($)</label>
-            <input type="number" value={monthlyPmt} onChange={e => setMonthlyPmt(e.target.value)}
-              onBlur={saveTerms} step="0.01" min="0" style={{ fontSize: '12px' }} />
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function InputsPanel({ accounts, assets, liabilities, inputs, onSave, currentValues, onLiabilityUpdate }) {
-  const [open,        setOpen]        = useState(false)
-  const [activeSection, setActiveSection] = useState('accounts')
+  const handleSave = (type, id, data) => onSave(type, id, data)
 
-  const ccAccounts  = accounts.filter(a => a.type === 'Credit card')
-  const growthAccts = accounts.filter(a => ['Investment','Retirement','Savings','Checking'].includes(a.type))
-  const otherAccts  = accounts.filter(a => !['Credit card','Investment','Retirement','Savings','Checking'].includes(a.type))
-
-  const sections = [
-    { id: 'accounts', label: 'Accounts', count: accounts.length },
-    { id: 'assets',   label: 'Assets',   count: assets.length },
-    { id: 'liabilities', label: 'Liabilities', count: liabilities.length },
-  ].filter(s => s.count > 0)
+  const hasAny = accounts.length > 0 || assets.length > 0 || liabilities.length > 0
+  if (!hasAny) return null
 
   return (
-    <div className="card" style={{ marginTop: '1rem' }}>
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-          padding: 0, color: 'var(--text)',
-        }}
-      >
-        <span style={{ fontSize: '13px', fontWeight: 600 }}>Projection assumptions</span>
-        <ChevronRight size={14} style={{
-          transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-          transition: 'transform 0.15s',
-          color: 'var(--text-tertiary)',
-        }} />
-      </button>
-
-      {open && (
-        <div style={{ marginTop: '14px' }}>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '14px', lineHeight: 1.6 }}>
-            Set growth rates, APRs, and payment modes for each entity. Leave blank to assume no growth / interest.
-            Bills and income schedules are applied automatically based on their mapped accounts.
-          </p>
-
-          {/* Section tabs */}
-          {sections.length > 1 && (
-            <div className="budget-view-toggle" style={{ marginBottom: '12px', width: 'fit-content' }}>
-              {sections.map(s => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`budget-view-btn${activeSection === s.id ? ' active' : ''}`}
-                  onClick={() => setActiveSection(s.id)}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {activeSection === 'accounts' && (
-            <div className="card" style={{ padding: 0, '--dt-cols': 'minmax(0,1fr) 110px minmax(160px,220px)' }}>
-              <div className="acct-tbl-header">
-                <span className="col-header-label">Account</span>
-                <span className="col-header-label" style={{ justifyContent: 'flex-end' }}>Current</span>
-                <span className="col-header-label">Projection inputs</span>
-              </div>
-              {accounts.length === 0
-                ? <p className="muted" style={{ padding: '1rem 1.5rem', fontSize: '13px' }}>No accounts.</p>
-                : accounts.map(a => (
-                    <AccountInputRow
-                      key={a.id} account={a}
-                      input={inputs[`account:${a.id}`]}
-                      currentBalance={currentValues?.accounts?.[a.id]}
-                      onSave={onSave}
-                    />
-                  ))
-              }
-            </div>
-          )}
-
-          {activeSection === 'assets' && (
-            <div className="card" style={{ padding: 0, '--dt-cols': 'minmax(0,1fr) 110px minmax(180px,220px)' }}>
-              <div className="acct-tbl-header">
-                <span className="col-header-label">Asset</span>
-                <span className="col-header-label" style={{ justifyContent: 'flex-end' }}>Current</span>
-                <span className="col-header-label">Appreciation</span>
-              </div>
-              {assets.length === 0
-                ? <p className="muted" style={{ padding: '1rem 1.5rem', fontSize: '13px' }}>No assets.</p>
-                : assets.map(a => {
-                    const linked = liabilities.filter(l => l.asset_id === a.id)
-                    const liabInputMap = {}
-                    linked.forEach(l => { liabInputMap[l.id] = inputs[`liability:${l.id}`] })
-                    return (
-                      <AssetInputRow
-                        key={a.id}
-                        asset={a}
-                        assetInput={inputs[`asset:${a.id}`]}
-                        linkedLiabilities={linked}
-                        liabilityInputs={liabInputMap}
-                        currentValues={currentValues}
-                        onSave={onSave}
-                      />
-                    )
-                  })
-              }
-            </div>
-          )}
-
-          {activeSection === 'liabilities' && (
-            <div className="card" style={{ padding: 0, '--dt-cols': 'minmax(0,1fr) 110px minmax(200px,320px)' }}>
-              <div className="acct-tbl-header">
-                <span className="col-header-label">Liability</span>
-                <span className="col-header-label" style={{ justifyContent: 'flex-end' }}>Current</span>
-                <span className="col-header-label">Projection inputs</span>
-              </div>
-              {liabilities.length === 0
-                ? <p className="muted" style={{ padding: '1rem 1.5rem', fontSize: '13px' }}>No liabilities.</p>
-                : liabilities.map(l => (
-                    <LiabilityInputRow
-                      key={l.id} liability={l}
-                      input={inputs[`liability:${l.id}`]}
-                      currentBalance={currentValues?.liabilities?.[l.id]}
-                      onSave={onSave}
-                      onLiabilityUpdate={onLiabilityUpdate}
-                    />
-                  ))
-              }
-            </div>
-          )}
+    <div style={{ marginTop: '1.75rem' }}>
+      <div className="section-label" style={{ marginBottom: '10px' }}>Projection assumptions</div>
+      <div className="card" style={{ padding: 0, '--dt-cols': PROJ_COLS }}>
+        {/* Header */}
+        <div className="acct-tbl-header" style={{ position: 'relative', top: 'unset', padding: '6px 1.5rem' }}>
+          {['Name', 'Balance', 'APR', 'Period', 'Interest Type', 'Payment / Mode'].map((h, i) => (
+            <div key={i} style={{ ...hdrStyle, justifyContent: i === 1 ? 'flex-end' : 'flex-start', display: 'flex', alignItems: 'center' }}>{h}</div>
+          ))}
         </div>
-      )}
+
+        {/* Accounts */}
+        {accounts.length > 0 && <SectionDivider label="Accounts" />}
+        {accounts.map(a => (
+          <ProjectionRow
+            key={`account:${a.id}`}
+            dotColor={ACCOUNT_COLORS[a.type] || '#888'}
+            name={a.name}
+            sub={a.type}
+            currentVal={currentValues?.accounts?.[a.id]}
+            valColor={a.type === 'Credit card' ? 'var(--red)' : undefined}
+            input={inputs[`account:${a.id}`] || {}}
+            onSave={(data) => handleSave('account', a.id, data)}
+          />
+        ))}
+
+        {/* Assets */}
+        {assets.length > 0 && <SectionDivider label="Assets" />}
+        {assets.map(a => {
+          const liabTotal = liabilities.filter(l => l.asset_id === a.id).reduce((s, l) => s + (currentValues?.liabilities?.[l.id] ?? l.balance), 0)
+          const assetVal  = currentValues?.assets?.[a.id]
+          const equity    = assetVal != null ? assetVal - liabTotal : null
+          return (
+            <ProjectionRow
+              key={`asset:${a.id}`}
+              dotColor={ASSET_COLORS[a.type] || '#888'}
+              name={a.name}
+              sub={a.type}
+              currentVal={equity ?? assetVal}
+              valColor={equity != null && equity < 0 ? 'var(--red)' : undefined}
+              input={inputs[`asset:${a.id}`] || {}}
+              onSave={(data) => handleSave('asset', a.id, data)}
+            />
+          )
+        })}
+
+        {/* Liabilities */}
+        {liabilities.length > 0 && <SectionDivider label="Liabilities" />}
+        {liabilities.map(l => (
+          <ProjectionRow
+            key={`liability:${l.id}`}
+            dotColor={LIABILITY_COLORS[l.type] || '#888'}
+            name={l.name}
+            sub={l.type}
+            currentVal={currentValues?.liabilities?.[l.id] ?? l.balance}
+            valColor="var(--red)"
+            input={inputs[`liability:${l.id}`] || {}}
+            onSave={(data) => handleSave('liability', l.id, data)}
+            onLiabilityUpdate={onLiabilityUpdate}
+            liability={l}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -806,8 +610,7 @@ export default function Projector() {
   const { data: bounds } = useProjectorBounds()
 
   // ── Build the full possible month range ───────────────────────────────────
-  // Left bound: earliest data month (from API), default 5yr back
-  // Right bound: 30 years forward
+  // ── Build the full possible month range ───────────────────────────────────
   const PROJECTION_MONTHS = 360  // 30 years
 
   const allMonths = useMemo(() => {
@@ -841,6 +644,20 @@ export default function Projector() {
 
   const fromMonth = allMonths[committedLeft]
   const toMonth   = allMonths[committedRight]
+
+  // Snap slider thumbs when MonthPicker changes a bound
+  const handleFromMonthChange = (yyyymm) => {
+    const idx = allMonths.indexOf(yyyymm)
+    if (idx === -1) return
+    const clamped = Math.min(idx, committedRight - 1)
+    setLeftIdx(clamped); setCommittedLeft(clamped)
+  }
+  const handleToMonthChange = (yyyymm) => {
+    const idx = allMonths.indexOf(yyyymm)
+    if (idx === -1) return
+    const clamped = Math.max(idx, committedLeft + 1)
+    setRightIdx(clamped); setCommittedRight(clamped)
+  }
 
   // ── Fetch projection ──────────────────────────────────────────────────────
   const { data: projData, isLoading } = useProjection(
@@ -921,7 +738,7 @@ export default function Projector() {
 
   // ── Net worth summary ─────────────────────────────────────────────────────
   const finalNetWorth   = projData?.netWorth?.[projData.netWorth.length - 1]
-  const todayDataIdx    = committedLeft <= todayIdx ? todayIdx - committedLeft : -1
+  const todayDataIdx    = todayIdx >= committedLeft && todayIdx <= committedRight ? todayIdx - committedLeft : -1
   const currentNetWorth = todayDataIdx >= 0 ? (projData?.netWorth?.[todayDataIdx] ?? null) : null
   const netWorthDelta   = finalNetWorth != null && currentNetWorth != null
     ? finalNetWorth - currentNetWorth
@@ -936,37 +753,9 @@ export default function Projector() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      {projData && (
-        <div className="grid-4" style={{ marginBottom: '1.75rem' }}>
-          <div className="card metric-card">
-            <div className="metric-label">Current Net Worth</div>
-            <div className="metric-value">{currentNetWorth != null ? formatCurrency(currentNetWorth) : '—'}</div>
-          </div>
-          <div className="card metric-card">
-            <div className="metric-label">Projected Net Worth</div>
-            <div className="metric-value" style={{ color: (finalNetWorth ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
-              {finalNetWorth != null ? formatCurrency(finalNetWorth) : '—'}
-            </div>
-            <div className="metric-sub">{fmtMonth(toMonth)}</div>
-          </div>
-          <div className="card metric-card">
-            <div className="metric-label">Projected change</div>
-            <div className={`metric-value ${(netWorthDelta ?? 0) >= 0 ? 'up' : 'down'}`}>
-              {netWorthDelta != null ? `${netWorthDelta >= 0 ? '+' : ''}${formatCurrency(netWorthDelta)}` : '—'}
-            </div>
-          </div>
-          <div className="card metric-card">
-            <div className="metric-label">Projection span</div>
-            <div className="metric-value">{monthsBetween(today, toMonth)}</div>
-            <div className="metric-sub">months forward</div>
-          </div>
-        </div>
-      )}
-
-      {/* Chart */}
-      <div className="card">
-        {/* Date range slider */}
+      {/* Chart — first, matching Dashboard layout */}
+      <div className="card" style={{ marginBottom: '1.75rem' }}>
+        {/* Date range slider — labels are clickable MonthPickers */}
         <DualRangeSlider
           min={0}
           max={allMonths.length - 1}
@@ -975,9 +764,11 @@ export default function Projector() {
           months={allMonths}
           onChange={(l, r) => { setLeftIdx(l); setRightIdx(r) }}
           onCommit={(l, r) => { setCommittedLeft(l); setCommittedRight(r) }}
+          fromPicker={<MonthPicker value={fromMonth || today} onChange={handleFromMonthChange} hideArrows />}
+          toPicker={<MonthPicker value={toMonth || today} onChange={handleToMonthChange} hideArrows />}
         />
 
-        <div style={{ marginTop: '16px' }}>
+        <div>
           {isLoading ? (
             <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: '13px' }}>
               Building projection…
@@ -1051,6 +842,34 @@ export default function Projector() {
           />
         )}
       </div>
+
+      {/* Summary cards — below chart, matching Dashboard pattern */}
+      {projData && (
+        <div className="grid-4" style={{ marginBottom: '1.75rem' }}>
+          <div className="card metric-card">
+            <div className="metric-label">Current Net Worth</div>
+            <div className="metric-value">{currentNetWorth != null ? formatCurrency(currentNetWorth) : '—'}</div>
+          </div>
+          <div className="card metric-card">
+            <div className="metric-label">Projected Net Worth</div>
+            <div className="metric-value" style={{ color: (finalNetWorth ?? 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {finalNetWorth != null ? formatCurrency(finalNetWorth) : '—'}
+            </div>
+            <div className="metric-sub">{fmtMonth(toMonth)}</div>
+          </div>
+          <div className="card metric-card">
+            <div className="metric-label">Projected change</div>
+            <div className={`metric-value ${(netWorthDelta ?? 0) >= 0 ? 'up' : 'down'}`}>
+              {netWorthDelta != null ? `${netWorthDelta >= 0 ? '+' : ''}${formatCurrency(netWorthDelta)}` : '—'}
+            </div>
+          </div>
+          <div className="card metric-card">
+            <div className="metric-label">Projection span</div>
+            <div className="metric-value">{monthsBetween(today, toMonth)}</div>
+            <div className="metric-sub">months forward</div>
+          </div>
+        </div>
+      )}
 
       {/* Projection assumptions panel */}
       {(accounts.length > 0 || assets.length > 0 || liabilities.length > 0) && (
