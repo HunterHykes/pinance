@@ -54,6 +54,7 @@ const EQUITY_COLORS = {
 }
 
 function seriesColor(s) {
+  if (s.color) return s.color
   if (s.seriesType === 'account')   return ACCOUNT_COLORS[s.type]   || '#888'
   if (s.seriesType === 'asset')     return ASSET_COLORS[s.type]     || '#888'
   if (s.seriesType === 'equity')    return EQUITY_COLORS[s.type]    || '#aaa'
@@ -472,8 +473,8 @@ function InputsPanel({ accounts, assets, liabilities, inputs, onSave, currentVal
         {accounts.map(a => (
           <ProjectionRow
             key={`account:${a.id}`}
-            dotColor={ACCOUNT_COLORS[a.type] || '#888'}
-            name={a.name}
+            dotColor={a.color || ACCOUNT_COLORS[a.type] || '#888'}
+            name={a.display_name || a.name}
             sub={a.type}
             currentVal={currentValues?.accounts?.[a.id]}
             valColor={a.type === 'Credit card' ? 'var(--red)' : undefined}

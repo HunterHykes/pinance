@@ -143,6 +143,7 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
   const [color,       setColor]       = useState(initial?.color || null)
   const [accountId,   setAccountId]   = useState(initial?.account_id || '')
   const [status,      setStatus]      = useState(initial?.status || 'active')
+  const [billType,    setBillType]    = useState(initial?.bill_type || 'bill')
   const [pauseUntil,  setPauseUntil]  = useState(initial?.pause_until || '')
   const [startedOn,   setStartedOn]   = useState(initial?.started_on || new Date().toISOString().slice(0, 10))
 
@@ -236,7 +237,7 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
     } else {
       finalCharges = charges.map(c => ({ ...c, id: c.id || undefined, amount: parseFloat(c.amount), anchor_date: c.anchor_date || startedOn, effective_from: c.effective_from || startedOn }))
     }
-    const formData = { name, description, parent_category_id: parentCatId || null, color: color || null, account_id: accountId || null, status, pause_until: status === 'paused' ? pauseUntil || null : null, started_on: startedOn, notes: description, charges: finalCharges }
+    const formData = { name, description, parent_category_id: parentCatId || null, color: color || null, account_id: accountId || null, status, pause_until: status === 'paused' ? pauseUntil || null : null, started_on: startedOn, notes: description, bill_type: billType, charges: finalCharges }
 
     // Client-side conflict check: only for new single-charge bills
     if (!initial && finalCharges.length === 1 && nameConflict) {
@@ -273,11 +274,17 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexShrink: 0 }}>
             <h3 className="modal-title" style={{ margin: 0 }}>{initial ? 'Edit Bill' : 'Add Bill'}</h3>
-            <div className="budget-view-toggle">
-              <button className={`budget-view-btn${!isSplit ? ' active' : ''}`} type="button" onClick={() => handleTabChange('details')}>Details</button>
-              <button className={`budget-view-btn${isSplit ? ' active' : ''}`} type="button" onClick={() => handleTabChange('split')} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <Scissors size={11} />{charges.length > 1 ? `Split (${charges.length})` : 'Split'}
-              </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="budget-view-toggle">
+                <button className={`budget-view-btn${billType === 'bill' ? ' active' : ''}`} type="button" onClick={() => setBillType('bill')}>Bill</button>
+                <button className={`budget-view-btn${billType === 'subscription' ? ' active' : ''}`} type="button" onClick={() => setBillType('subscription')}>Subscription</button>
+              </div>
+              <div className="budget-view-toggle">
+                <button className={`budget-view-btn${!isSplit ? ' active' : ''}`} type="button" onClick={() => handleTabChange('details')}>Details</button>
+                <button className={`budget-view-btn${isSplit ? ' active' : ''}`} type="button" onClick={() => handleTabChange('split')} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <Scissors size={11} />{charges.length > 1 ? `Split (${charges.length})` : 'Split'}
+                </button>
+              </div>
             </div>
           </div>
 

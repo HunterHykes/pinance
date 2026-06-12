@@ -253,11 +253,20 @@ function Bills() {
   const createSub=useCreateBill(),updateSub=useUpdateBill(),deleteSub=useDeleteBill()
   useEffect(()=>{if(!openFilter)return;const h=(e)=>{if(filterRef.current&&!filterRef.current.contains(e.target))setOpenFilter(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[openFilter])
   const filtered=useMemo(()=>statusFilter==='all'?subs:subs.filter(s=>s.status===statusFilter),[subs,statusFilter])
+  const filteredBills=filtered.filter(s=>s.bill_type!=='subscription')
+  const filteredSubs=filtered.filter(s=>s.bill_type==='subscription')
   const activeSubs=subs.filter(s=>s.status==='active'),totalMonthly=activeSubs.reduce((s,sub)=>s+monthlyEquivalent(sub.charges),0)
+  const activeBillItems=activeSubs.filter(s=>s.bill_type!=='subscription'),activeSubItems=activeSubs.filter(s=>s.bill_type==='subscription')
+  const billsMonthly=activeBillItems.reduce((s,sub)=>s+monthlyEquivalent(sub.charges),0)
+  const subsMonthly=activeSubItems.reduce((s,sub)=>s+monthlyEquivalent(sub.charges),0)
   const dueThisMonth=activeSubs.filter(s=>s.charges.filter(c=>!c.effective_to).some(c=>c.frequency!=='monthly'&&chargeOccursInMonth(c.anchor_date,c.frequency,month)))
   const pausedCount=subs.filter(s=>s.status==='paused').length
   const filteredMonthly=filtered.reduce((s,sub)=>s+monthlyEquivalent(sub.charges),0)
   const filteredThisMonth=filtered.reduce((s,sub)=>s+(sub.charges||[]).filter(c=>!c.effective_to).reduce((a,c)=>a+chargeThisMonth(c,month),0),0)
+  const filteredBillsMonthly=filteredBills.reduce((s,sub)=>s+monthlyEquivalent(sub.charges),0)
+  const filteredSubsMonthly=filteredSubs.reduce((s,sub)=>s+monthlyEquivalent(sub.charges),0)
+  const filteredBillsThisMonth=filteredBills.reduce((s,sub)=>s+(sub.charges||[]).filter(c=>!c.effective_to).reduce((a,c)=>a+chargeThisMonth(c,month),0),0)
+  const filteredSubsThisMonth=filteredSubs.reduce((s,sub)=>s+(sub.charges||[]).filter(c=>!c.effective_to).reduce((a,c)=>a+chargeThisMonth(c,month),0),0)
   const [pendingEdit,setPendingEdit]=useState(null),[pendingForm,setPendingForm]=useState(null),[showScopeModal,setShowScopeModal]=useState(false)
 
   const handleSave=async(form)=>{
@@ -276,13 +285,16 @@ function Bills() {
     <div>
       <div className="page-header"><div><h1 className="page-title">Bills</h1><MonthPicker value={month} onChange={setMonth} /></div><button className="btn-primary" onClick={()=>{setEditing(null);setShowModal(true)}}>+ Add Bill</button></div>
       <div className="grid-4" style={{marginBottom:'1.75rem'}}>
-        <div className="card metric-card"><div className="metric-label">Monthly cost</div><div className="metric-value">{formatCurrency(totalMonthly)}</div><div className="metric-sub">across active bills</div></div>
-        <div className="card metric-card"><div className="metric-label">Annual cost</div><div className="metric-value">{formatCurrency(totalMonthly*12)}</div><div className="metric-sub">estimated</div></div>
-        <div className="card metric-card"><div className="metric-label">Non-standard this month</div><div className="metric-value" style={{color:dueThisMonth.length?'var(--amber)':undefined}}>{dueThisMonth.length}</div><div className="metric-sub">extra charges due</div></div>
-        <div className="card metric-card"><div className="metric-label">Paused</div><div className="metric-value">{pausedCount}</div><div className="metric-sub">bills</div></div>
+        <div className="card metric-card"><div className="metric-label">Bills monthly</div><div className="metric-value">{formatCurrency(billsMonthly)}</div><div className="metric-sub">active bills</div></div>
+        <div className="card metric-card"><div className="metric-label">Subscriptions monthly</div><div className="metric-value">{formatCurrency(subsMonthly)}</div><div className="metric-sub">active subscriptions</div></div>
+        <div className="card metric-card"><div className="metric-label">Total monthly</div><div className="metric-value">{formatCurrency(totalMonthly)}</div><div className="metric-sub">combined</div></div>
+        <div className="card metric-card"><div className="metric-label">Paused</div><div className="metric-value">{pausedCount}</div><div className="metric-sub">bills &amp; subscriptions</div></div>
       </div>
-      {subs.length===0?(<div className="card"><p className="muted" style={{fontSize:'13px'}}>No bills yet. <button className="btn-link" onClick={()=>setShowModal(true)}>Add one</button></p></div>):(
-        <div className="card" style={{padding:0,'--dt-cols':REC_COLS}}>
+
+      {/* Bills table */}
+      {(subs.some(s=>s.bill_type!=='subscription')||filteredBills.length>0)&&(
+        <><div style={{display:'flex',alignItems:'center',marginBottom:'8px'}}><div className="section-label">Bills</div></div>
+        <div className="card" style={{padding:0,'--dt-cols':REC_COLS,marginBottom:'1.5rem'}}>
           <div className="acct-tbl-header">
             <span className="col-header-label">Name</span>
             <div className="txn-filter-cell" ref={filterRef}>
@@ -297,10 +309,29 @@ function Bills() {
             <span className="col-header-label" style={{justifyContent:'flex-end'}}>Annually</span>
             <div/>
           </div>
-          {filtered.length===0?(<p className="muted" style={{fontSize:'13px',padding:'1.25rem 1.5rem'}}>No {statusFilter!=='all'?statusFilter:''} bills.</p>):(filtered.map(sub=><BillTableRow key={sub.id} sub={sub} categories={categories} accounts={accounts} month={month} onEdit={s=>{setEditing(s);setShowModal(true)}} onDelete={handleDelete} onUpdate={handleInlineUpdate} />))}
-          {filtered.length>0&&(<div className="tbl-footer-row"><span className="footer-label">Total ({statusFilter==='all'?'all':statusFilter})</span><div/><span className="footer-value" style={{textAlign:'right'}}>{filteredThisMonth>0?formatCurrency(filteredThisMonth):'—'}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredMonthly)}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredMonthly*12)}</span><div/></div>)}
-        </div>
+          {filteredBills.length===0?(<p className="muted" style={{fontSize:'13px',padding:'1.25rem 1.5rem'}}>No {statusFilter!=='all'?statusFilter+' ':''}bills.</p>):(filteredBills.map(sub=><BillTableRow key={sub.id} sub={sub} categories={categories} accounts={accounts} month={month} onEdit={s=>{setEditing(s);setShowModal(true)}} onDelete={handleDelete} onUpdate={handleInlineUpdate} />))}
+          {filteredBills.length>0&&(<div className="tbl-footer-row"><span className="footer-label">Total</span><div/><span className="footer-value" style={{textAlign:'right'}}>{filteredBillsThisMonth>0?formatCurrency(filteredBillsThisMonth):'—'}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredBillsMonthly)}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredBillsMonthly*12)}</span><div/></div>)}
+        </div></>
       )}
+
+      {/* Subscriptions table */}
+      {(subs.some(s=>s.bill_type==='subscription')||filteredSubs.length>0)&&(
+        <><div style={{display:'flex',alignItems:'center',marginBottom:'8px'}}><div className="section-label">Subscriptions</div></div>
+        <div className="card" style={{padding:0,'--dt-cols':REC_COLS,marginBottom:'1.5rem'}}>
+          <div className="acct-tbl-header">
+            <span className="col-header-label">Name</span>
+            <span className="col-header-label">Status</span>
+            <span className="col-header-label" style={{justifyContent:'flex-end'}}>This Month</span>
+            <span className="col-header-label" style={{justifyContent:'flex-end'}}>Monthly</span>
+            <span className="col-header-label" style={{justifyContent:'flex-end'}}>Annually</span>
+            <div/>
+          </div>
+          {filteredSubs.length===0?(<p className="muted" style={{fontSize:'13px',padding:'1.25rem 1.5rem'}}>No {statusFilter!=='all'?statusFilter+' ':''}subscriptions.</p>):(filteredSubs.map(sub=><BillTableRow key={sub.id} sub={sub} categories={categories} accounts={accounts} month={month} onEdit={s=>{setEditing(s);setShowModal(true)}} onDelete={handleDelete} onUpdate={handleInlineUpdate} />))}
+          {filteredSubs.length>0&&(<div className="tbl-footer-row"><span className="footer-label">Total</span><div/><span className="footer-value" style={{textAlign:'right'}}>{filteredSubsThisMonth>0?formatCurrency(filteredSubsThisMonth):'—'}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredSubsMonthly)}</span><span className="footer-value" style={{textAlign:'right'}}>{formatCurrency(filteredSubsMonthly*12)}</span><div/></div>)}
+        </div></>
+      )}
+
+      {subs.length===0&&(<div className="card"><p className="muted" style={{fontSize:'13px'}}>No bills yet. <button className="btn-link" onClick={()=>setShowModal(true)}>Add one</button></p></div>)}
       {showModal&&<BillModal initial={editing} categories={categories} accounts={accounts} onClose={()=>{setShowModal(false);setEditing(null)}} onSave={handleSave} loading={createSub.isPending||updateSub.isPending} />}
       {showScopeModal&&pendingEdit&&(
         <div className="modal-bg" onClick={e=>e.target===e.currentTarget&&setShowScopeModal(false)}>

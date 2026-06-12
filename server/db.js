@@ -243,6 +243,7 @@ const migrations = [
   `ALTER TABLE bill_charges ADD COLUMN budget_category_id INTEGER REFERENCES budget_categories(id)`,
   `ALTER TABLE bill_charges ADD COLUMN account_id INTEGER REFERENCES accounts(id)`,
   `ALTER TABLE bill_charges ADD COLUMN schedule TEXT`,
+  `ALTER TABLE bills ADD COLUMN bill_type TEXT NOT NULL DEFAULT 'bill'`,
   `CREATE TABLE IF NOT EXISTS account_preferences (
     id           INTEGER PRIMARY KEY,
     user_id      INTEGER NOT NULL REFERENCES users(id),
@@ -352,8 +353,12 @@ const migrations = [
     apr              REAL,
     cc_payment_mode  TEXT,
     cc_min_payment   REAL,
+    rate_period      TEXT DEFAULT 'annual',
+    compounding      TEXT DEFAULT 'compound',
     UNIQUE(user_id, entity_type, entity_id)
   )`,
+  `ALTER TABLE projector_inputs ADD COLUMN rate_period TEXT DEFAULT 'annual'`,
+  `ALTER TABLE projector_inputs ADD COLUMN compounding TEXT DEFAULT 'compound'`,
 ];
 for (const sql of migrations) {
   try { db.exec(sql) } catch (_) { /* already exists, skip */ }

@@ -95,20 +95,45 @@ function occurrencesPerMonth(frequency, customDays) {
 }
 
 // ── Rate helpers ──────────────────────────────────────────────────────────────
-// growth_rate and apr inputs are annual percentages (e.g. 7 = 7%).
-// monthlyFromAnnual converts to the monthly multiplier using compound interest:
-//   (1 + annual/100)^(1/12) - 1
-// This means a 7% annual input yields exactly 7% annual compounded monthly.
-// For APR on credit cards/loans we use simple division (r/12) per convention.
+// Converts a user-entered rate to a monthly multiplier based on period and compounding.
+// rate_period: 'annual' | 'quarterly' | 'monthly'
+// compounding: 'compound' | 'simple'
 
-function monthlyGrowthRate(annualPct) {
-  if (!annualPct) return 0
-  return Math.pow(1 + annualPct / 100, 1 / 12) - 1
+function toMonthlyRate(ratePct, period, compounding) {
+  if (!ratePct) return 0
+  const r = ratePct / 100
+
+  // Convert to annual equivalent first
+  let annualRate
+  switch (period) {
+    case 'monthly':   annualRate = r * 12;   break
+    case 'quarterly': annualRate = r * 4;    break
+    default:          annualRate = r;         break // 'annual'
+  }
+
+  if (compounding === 'simple') {
+    // Simple: linear monthly fraction of annual rate
+    return annualRate / 12
+  } else {
+    // Compound: (1 + annual)^(1/12) - 1
+    return Math.pow(1 + annualRate, 1 / 12) - 1
+  }
 }
 
-function monthlyAPR(annualPct) {
-  if (!annualPct) return 0
-  return annualPct / 100 / 12
+function monthlyGrowthRate(input) {
+  const rate   = input.growth_rate || 0
+  const period = input.rate_period  || 'annual'
+  const comp   = input.compounding  || 'compound'
+  return toMonthlyRate(rate, period, comp)
+}
+
+function monthlyAPR(input) {
+  // APR is conventionally simple/monthly regardless of compounding setting
+  const rate   = input.apr || input  // support legacy numeric call
+  const ratePct = typeof rate === 'object' ? (rate.apr || 0) : rate
+  const period  = typeof rate === 'object' ? (rate.rate_period || 'annual') : 'annual'
+  const comp    = typeof rate === 'object' ? (rate.compounding || 'simple') : 'simple'
+  return toMonthlyRate(ratePct, period, comp)
 }
 
 // ── GET /api/projector/bounds ─────────────────────────────────────────────────
@@ -144,6 +169,8 @@ router.get('/inputs', (req, res) => {
       apr:             row.apr,
       cc_payment_mode: row.cc_payment_mode,
       cc_min_payment:  row.cc_min_payment,
+      rate_period:     row.rate_period  || 'annual',
+      compounding:     row.compounding  || 'compound',
     }
   }
   res.json(map)
@@ -155,18 +182,20 @@ router.put('/inputs/:type/:id', (req, res) => {
   const userId     = req.session.userId
   const entityType = req.params.type   // 'account' | 'asset' | 'liability'
   const entityId   = parseInt(req.params.id)
-  const { growth_rate, apr, cc_payment_mode, cc_min_payment } = req.body
+  const { growth_rate, apr, cc_payment_mode, cc_min_payment, rate_period, compounding } = req.body
 
   db.prepare(`
     INSERT INTO projector_inputs
-      (user_id, entity_type, entity_id, growth_rate, apr, cc_payment_mode, cc_min_payment)
+      (user_id, entity_type, entity_id, growth_rate, apr, cc_payment_mode, cc_min_payment, rate_period, compounding)
     VALUES
-      (@user_id, @entity_type, @entity_id, @growth_rate, @apr, @cc_payment_mode, @cc_min_payment)
+      (@user_id, @entity_type, @entity_id, @growth_rate, @apr, @cc_payment_mode, @cc_min_payment, @rate_period, @compounding)
     ON CONFLICT(user_id, entity_type, entity_id) DO UPDATE SET
       growth_rate     = excluded.growth_rate,
       apr             = excluded.apr,
       cc_payment_mode = excluded.cc_payment_mode,
-      cc_min_payment  = excluded.cc_min_payment
+      cc_min_payment  = excluded.cc_min_payment,
+      rate_period     = excluded.rate_period,
+      compounding     = excluded.compounding
   `).run({
     user_id:         userId,
     entity_type:     entityType,
@@ -175,6 +204,8 @@ router.put('/inputs/:type/:id', (req, res) => {
     apr:             apr             ?? null,
     cc_payment_mode: cc_payment_mode ?? null,
     cc_min_payment:  cc_min_payment  ?? null,
+    rate_period:     rate_period     ?? 'annual',
+    compounding:     compounding     ?? 'compound',
   })
 
   res.json({ message: 'Saved' })
@@ -198,7 +229,14 @@ router.get('/', (req, res) => {
   const today = new Date().toISOString().slice(0, 7)
 
   // ── Load entities ─────────────────────────────────────────────────────────
-  const accounts    = db.prepare('SELECT * FROM accounts    WHERE user_id = ?').all(userId)
+  const accounts    = db.prepare(`
+    SELECT a.*, COALESCE(p.display_name, a.name) AS display_name,
+      ip.color AS account_color
+    FROM accounts a
+    LEFT JOIN account_preferences p ON p.account_id = a.id AND p.user_id = a.user_id
+    LEFT JOIN institution_preferences ip ON ip.institution = a.institution AND ip.user_id = a.user_id
+    WHERE a.user_id = ?
+  `).all(userId)
   const assets      = db.prepare('SELECT * FROM assets      WHERE user_id = ?').all(userId)
   const liabilities = db.prepare('SELECT * FROM liabilities WHERE user_id = ?').all(userId)
 
@@ -286,26 +324,20 @@ router.get('/', (req, res) => {
   function cashFlowForMonth(month, accountId) {
     let flow = 0
 
-    // Income credited to this account
+    // Income credited to this specific account only — no fallback routing
     for (const s of incomeSchedules) {
-      const effectiveAccountId = s.account_id ?? s.income_account_id ?? fallbackAccountId
+      const effectiveAccountId = s.account_id ?? s.income_account_id ?? null
       if (effectiveAccountId !== accountId) continue
       if (!incomeOccursInMonth(s.anchor_date, s.frequency, s.custom_days, month)) continue
       flow += s.amount * occurrencesPerMonth(s.frequency, s.custom_days)
     }
 
-    // Bills debited from this account
+    // Bills debited from this specific account only — no fallback routing
     for (const c of billCharges) {
-      const effectiveAccountId = c.account_id ?? c.bill_account_id ?? fallbackAccountId
+      const effectiveAccountId = c.account_id ?? c.bill_account_id ?? null
       if (effectiveAccountId !== accountId) continue
       if (!chargeOccursInMonth(c.anchor_date, c.frequency, month)) continue
-      switch (c.frequency) {
-        case 'monthly':     flow -= c.amount; break
-        case 'quarterly':   flow -= c.amount; break
-        case 'semi_annual': flow -= c.amount; break
-        case 'annual':      flow -= c.amount; break
-        default:            flow -= c.amount
-      }
+      flow -= c.amount
     }
 
     return flow
@@ -357,7 +389,7 @@ router.get('/', (req, res) => {
       } else {
         // Projection
         if (acct.type === 'Credit card') {
-          const apr        = monthlyAPR(input.apr || 0)
+          const apr        = monthlyAPR(input)
           const mode       = input.cc_payment_mode || 'full'
           const minPayment = input.cc_min_payment || 0
           const balance    = projBal ?? 0
@@ -367,7 +399,7 @@ router.get('/', (req, res) => {
           else if (mode === 'minimum')  projBal = Math.min(0, projBal + Math.max(minPayment || 25, Math.abs(projBal) * 0.02))
           else if (mode === 'fixed')    projBal = Math.min(0, projBal + (minPayment || 0))
         } else {
-          const monthlyReturn = monthlyGrowthRate(input.growth_rate || 0)
+          const monthlyReturn = monthlyGrowthRate(input)
           const cashFlow      = cashFlowForMonth(month, acct.id)
           projBal = (projBal ?? 0) * (1 + monthlyReturn) + cashFlow
         }
@@ -379,8 +411,9 @@ router.get('/', (req, res) => {
 
     series.push({
       id:         acct.id,
-      name:       acct.name,
+      name:       acct.display_name || acct.name,
       type:       acct.type,
+      color:      acct.account_color || null,
       seriesType: 'account',
       isFallback,
       data,
@@ -454,7 +487,7 @@ router.get('/', (req, res) => {
       if (isHistory) {
         if (snapByMonth[month] !== undefined) lastFilled = snapByMonth[month]
       } else {
-        const monthlyGrowth = monthlyGrowthRate(input.growth_rate || 0)
+        const monthlyGrowth = monthlyGrowthRate(input)
         projVal = (projVal ?? 0) * (1 + monthlyGrowth)
       }
       const assetVal = isHistory ? lastFilled : projVal
@@ -472,7 +505,7 @@ router.get('/', (req, res) => {
             const principal = Math.max(0, Math.min(ls.pmt - interest, ls.projBal))
             ls.projBal      = Math.max(0, ls.projBal - principal)
           } else if (!ls.hasTerms && ls.liabInput.apr) {
-            const apr      = monthlyAPR(ls.liabInput.apr)
+            const apr      = monthlyAPR(ls.liabInput)
             ls.projBal    += ls.projBal * apr
             const mode     = ls.liabInput.cc_payment_mode || 'full'
             const minPmt   = ls.liabInput.cc_min_payment  || 0
@@ -534,7 +567,7 @@ router.get('/', (req, res) => {
           const principal = Math.max(0, Math.min(pmt - interest, projBal))
           projBal = Math.max(0, projBal - principal)
         } else if (!hasTerms && input.apr) {
-          const apr      = monthlyAPR(input.apr)
+          const apr      = monthlyAPR(input)
           const interest = projBal * apr
           projBal       += interest
           const mode     = input.cc_payment_mode || 'full'

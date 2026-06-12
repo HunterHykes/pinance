@@ -5,11 +5,22 @@ const router      = express.Router();
 
 router.use(requireAuth);
 
-// GET - only return this user's accounts
+// GET - only return this user's accounts, with prefs merged in
 router.get('/', (req, res) => {
-  const accounts = db.prepare(
-    'SELECT * FROM accounts WHERE user_id = ? ORDER BY type, name'
-  ).all(req.session.userId);
+  const accounts = db.prepare(`
+    SELECT a.*,
+      COALESCE(p.display_name, a.name) AS display_name,
+      p.line_style,
+      p.is_hidden,
+      ip.color
+    FROM accounts a
+    LEFT JOIN account_preferences p
+      ON p.account_id = a.id AND p.user_id = a.user_id
+    LEFT JOIN institution_preferences ip
+      ON ip.institution = a.institution AND ip.user_id = a.user_id
+    WHERE a.user_id = ?
+    ORDER BY a.type, a.name
+  `).all(req.session.userId);
   res.json(accounts);
 });
 

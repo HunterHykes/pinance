@@ -24,7 +24,6 @@ function DashboardDropdown({ active }) {
   const ref               = useRef(null)
   const closeTimer        = useRef(null)
   const location          = useLocation()
-  const navigate          = useNavigate()
 
   const show = () => { clearTimeout(closeTimer.current); setOpen(true) }
   const hide = () => { closeTimer.current = setTimeout(() => setOpen(false), 120) }
@@ -35,7 +34,7 @@ function DashboardDropdown({ active }) {
     <div ref={ref} className="navbar-dropdown-wrap" onMouseEnter={show} onMouseLeave={hide}>
       <button
         className={`navbar-link navbar-dropdown-trigger ${active ? 'active' : ''}`}
-        onClick={() => { navigate('/'); setOpen(false) }}
+        onClick={() => setOpen(o => !o)}
       >
         Dashboard
       </button>
@@ -76,10 +75,7 @@ function BudgetDropdown({ active }) {
 
   useEffect(() => () => clearTimeout(closeTimer.current), [])
 
-  const handleClick = () => {
-    navigate('/budget')
-    setOpen(false)
-  }
+  const handleClick = () => setOpen(o => !o)
 
   return (
     <div
@@ -134,7 +130,7 @@ function RecurringDropdown({ active }) {
     <div ref={ref} className="navbar-dropdown-wrap" onMouseEnter={show} onMouseLeave={hide}>
       <button
         className={`navbar-link navbar-dropdown-trigger ${active ? 'active' : ''}`}
-        onClick={() => { navigate('/income'); setOpen(false) }}
+        onClick={() => setOpen(o => !o)}
       >
         Recurring
       </button>
@@ -178,7 +174,7 @@ function AssetsDropdown({ active }) {
     <div ref={ref} className="navbar-dropdown-wrap" onMouseEnter={show} onMouseLeave={hide}>
       <button
         className={`navbar-link navbar-dropdown-trigger ${active ? 'active' : ''}`}
-        onClick={() => { navigate('/assets'); setOpen(false) }}
+        onClick={() => setOpen(o => !o)}
       >
         Assets
       </button>

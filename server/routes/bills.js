@@ -61,7 +61,7 @@ router.post('/', (req, res) => {
   const userId = req.session.userId
   const { name, description, parent_category_id, account_id,
           color, status, pause_until, started_on, notes, charges,
-          merge_category_id } = req.body
+          merge_category_id, bill_type } = req.body
 
   if (!name || !started_on)
     return res.status(400).json({ error: 'name and started_on are required' })
@@ -81,11 +81,12 @@ router.post('/', (req, res) => {
     const result = db.prepare(`
       INSERT INTO bills
         (user_id, name, description, parent_category_id, account_id,
-         color, status, pause_until, started_on, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         color, status, pause_until, started_on, notes, bill_type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(userId, name, description || null, parent_category_id || null,
            account_id || null, color || null, status || 'active',
-           pause_until || null, started_on, notes || null)
+           pause_until || null, started_on, notes || null,
+           bill_type || 'bill')
 
     subId = result.lastInsertRowid
 
@@ -151,7 +152,7 @@ router.put('/:id', (req, res) => {
   const userId = req.session.userId
   const subId  = req.params.id
   const { name, description, account_id, parent_category_id, status, pause_until, notes, scope,
-          color,
+          color, bill_type,
           charges: incomingCharges } = req.body
 
   const existing = db.prepare(
@@ -171,14 +172,14 @@ router.put('/:id', (req, res) => {
   db.prepare(`
     UPDATE bills SET
       name = ?, description = ?, account_id = ?, parent_category_id = ?,
-      color = ?,
+      color = ?, bill_type = ?,
       status = ?, pause_until = ?,
       cancelled_on = CASE WHEN ? = 'cancelled' AND cancelled_on IS NULL
                     THEN date('now') ELSE cancelled_on END,
       notes = ?
     WHERE id = ? AND user_id = ?
   `).run(name, description || null, account_id || null, parent_category_id || null,
-         color || null,
+         color || null, bill_type || existing.bill_type || 'bill',
          status, pause_until || null, status, notes || null, subId, userId)
 
   // Sync color to linked budget_categories
