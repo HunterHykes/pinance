@@ -15,6 +15,8 @@ import RecurringRulePanel from '../components/RecurringRulePanel'
 import { MonthPicker } from '../components/DateRangePicker'
 import { CurrencyInput, DateInput } from '../components/FormControls'
 import IncomeModal from '../components/IncomeModal'
+import FrequencyPicker, { defaultSchedule as makeDefaultSchedule } from '../components/FrequencyPicker'
+import { occursInMonth, occurrencesPerMonth as scheduleOccurrences } from '../scheduleUtils'
 
 const FREQUENCIES = [
   { value: 'weekly',        label: 'Weekly' },
@@ -57,23 +59,21 @@ function ScheduleRuleRow({ schedule, index, onChange, onRemove, canRemove, start
   const labelTrimmed=schedule.label?.trim()||''
   const isDupLabel=labelTrimmed!==''&&(siblingSchedules||[]).some((s,i)=>i!==index&&(s.label?.trim()||'')===labelTrimmed)
   const handleFreqChange=(freq)=>{const a=deriveAnchorDate(freq,started_on);onChange(index,{...schedule,frequency:freq,anchor_date:a})}
-  const needsCustomDays=schedule.frequency==='custom_days'||schedule.frequency==='twice_monthly'
   const itemHist=useMemo(()=>(!schedule.budget_category_id||!allSchedules)?[]:allSchedules.filter(s=>s.budget_category_id===schedule.budget_category_id),[schedule.budget_category_id,allSchedules])
   return (
     <>
-      <div style={{display:'grid',gridTemplateColumns:RULE_COLUMNS,gap:'6px',alignItems:'center',padding:'6px 0',borderBottom:needsCustomDays?'none':'1px solid var(--border)',background:isDirty?'rgba(59,130,246,0.04)':'transparent'}}>
+      <div style={{display:'grid',gridTemplateColumns:RULE_COLUMNS,gap:'6px',alignItems:'center',padding:'6px 0',borderBottom:'1px solid var(--border)',background:isDirty?'rgba(59,130,246,0.04)':'transparent'}}>
         <div style={{position:'relative'}}>
           <input type="text" value={schedule.label} onChange={e=>set('label',e.target.value)} placeholder="Label" required style={{fontSize:'13px',borderColor:isDupLabel?'var(--red)':undefined,outline:isDupLabel?'1px solid var(--red)':undefined,width:'100%'}} />
           {isDupLabel&&<span style={{position:'absolute',top:'100%',left:0,fontSize:'10px',color:'var(--red)',whiteSpace:'nowrap',marginTop:'1px'}}>Duplicate label</span>}
         </div>
         <DateInput value={schedule.anchor_date||started_on||''} onChange={v=>set('anchor_date',v)} />
-        <select value={schedule.frequency} onChange={e=>handleFreqChange(e.target.value)} style={{fontSize:'13px'}}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select>
+        <FrequencyPicker value={schedule.schedule||makeDefaultSchedule(schedule.frequency||'biweekly')} onChange={s=>onChange(index,{...schedule,schedule:s,frequency:s.type})} mode="income" />
         <select value={schedule.account_id||''} onChange={e=>set('account_id',e.target.value||null)} style={{fontSize:'13px'}}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
         <div style={{display:'flex',justifyContent:'center'}}>{isExisting&&itemHist.length>1&&<button type="button" className={`btn-trend${showHist?' btn-trend--active':''}`} onClick={()=>setShowHist(h=>!h)} title="History"><TrendingUp size={12}/></button>}</div>
         <CurrencyInput value={schedule.amount} onChange={v=>set('amount',v)} placeholder="0.00" required inputStyle={{fontSize:'13px'}} />
         <div style={{display:'flex',justifyContent:'center'}}>{canRemove&&<button type="button" className="btn-icon-remove" onClick={()=>onRemove(index)} title="Remove"><span style={{fontSize:'16px',lineHeight:1}}>−</span></button>}</div>
       </div>
-      {needsCustomDays&&(<div style={{padding:'4px 0 8px',fontSize:'12px',color:'var(--text-secondary)',display:'flex',alignItems:'center',gap:'8px',borderBottom:'1px solid var(--border)'}}><span style={{color:'var(--text-tertiary)'}}>{schedule.frequency==='twice_monthly'?'Pay days:':'Days of month:'}</span><input type="text" value={schedule.frequency==='twice_monthly'?(schedule.custom_days||'1,15'):(schedule.custom_days||'')} onChange={e=>set('custom_days',e.target.value)} placeholder="e.g. 1, 15" style={{width:'120px',fontSize:'13px'}} /></div>)}
       {showHist&&itemHist.length>0&&(<div style={{padding:'4px 0 8px',borderBottom:'1px solid var(--border)'}}>{[...itemHist].sort((a,b)=>b.effective_from.localeCompare(a.effective_from)).map(s=><div key={s.id} className="sub-history-row"><span style={{color:s.effective_to?'var(--text-tertiary)':'var(--text)'}}>{s.label} — {formatCurrency(s.amount)} / {freqLabel(s.frequency)}</span><span style={{fontSize:'11px',color:'var(--text-tertiary)'}}>{new Date(s.effective_from+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}{s.effective_to?` → ${new Date(s.effective_to+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`:' → present'}</span></div>)}</div>)}
     </>
   )
@@ -125,21 +125,20 @@ function IncomeScheduleModal({ schedule, src, accounts, onClose, onSave, saving 
   const [label,      setLabel]      = useState(schedule.label || '')
   const [amount,     setAmount]     = useState(String(schedule.amount))
   const [frequency,  setFrequency]  = useState(schedule.frequency)
+  const [scheduleVal,setScheduleVal]= useState(schedule.schedule ? (typeof schedule.schedule === 'string' ? JSON.parse(schedule.schedule) : schedule.schedule) : makeDefaultSchedule(schedule.frequency || 'biweekly'))
   const [anchorDate, setAnchorDate] = useState(schedule.anchor_date || src.started_on)
   const [accountId,  setAccountId]  = useState(schedule.account_id || '')
-  const [customDays, setCustomDays] = useState(schedule.custom_days || '')
   const [intentModal,  setIntentModal]  = useState(false)
   const [pendingForm,  setPendingForm]  = useState(null)
 
-  const needsCustomDays = frequency === 'custom_days' || frequency === 'twice_monthly'
   const isDirty = label !== (schedule.label || '') || amount !== String(schedule.amount) ||
     frequency !== schedule.frequency || anchorDate !== (schedule.anchor_date || src.started_on) ||
     (accountId || null) !== (schedule.account_id || null)
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const us = { id: schedule.id, label, amount: parseFloat(amount), frequency, anchor_date: anchorDate, effective_from: schedule.effective_from, account_id: accountId || null, custom_days: customDays || null }
-    const os = src.schedules.filter(s => !s.effective_to && s.id !== schedule.id).map(s => ({ id: s.id, label: s.label, amount: s.amount, frequency: s.frequency, anchor_date: s.anchor_date, effective_from: s.effective_from, account_id: s.account_id || null, custom_days: s.custom_days || null }))
+    const us = { id: schedule.id, label, amount: parseFloat(amount), frequency, schedule: scheduleVal, anchor_date: anchorDate, effective_from: schedule.effective_from, account_id: accountId || null }
+    const os = src.schedules.filter(s => !s.effective_to && s.id !== schedule.id).map(s => ({ id: s.id, label: s.label, amount: s.amount, frequency: s.frequency, schedule: s.schedule, anchor_date: s.anchor_date, effective_from: s.effective_from, account_id: s.account_id || null }))
     const fd = { name: src.name, description: src.description || src.notes || '', parent_category_id: src.parent_category_id, color: src.color, account_id: src.account_id, status: src.status, started_on: src.started_on, notes: src.notes || '', schedules: [...os, us] }
     if (isDirty) { setPendingForm({ formData: fd, updatedSchedule: us }); setIntentModal(true) } else onClose()
   }
@@ -149,12 +148,12 @@ function IncomeScheduleModal({ schedule, src, accounts, onClose, onSave, saving 
   }
 
   const colStyle = { fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-tertiary)' }
-  const COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px)'
+  const COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,1.5fr) minmax(130px,155px) minmax(180px,1fr)' 
 
   return (
     <>
       <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentModal && onClose()}>
-        <div className="modal" style={{ maxWidth: '860px' }}>
+        <div className="modal" style={{ maxWidth: '960px' }}>
           <h3 className="modal-title" style={{ marginBottom: '2px' }}>Edit Pay Schedule</h3>
           <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>{src.name}</p>
           <form id="sched-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -172,16 +171,12 @@ function IncomeScheduleModal({ schedule, src, accounts, onClose, onSave, saving 
                 </select>
                 <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Label" required style={{ fontSize: '13px' }} />
                 <DateInput value={anchorDate} onChange={setAnchorDate} />
-                <select value={frequency} onChange={e => setFrequency(e.target.value)} style={{ fontSize: '13px' }}>
-                  {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                </select>
+                <FrequencyPicker
+                  value={scheduleVal}
+                  onChange={s => { setScheduleVal(s); setFrequency(s.type) }}
+                  mode="income"
+                />
               </div>
-              {needsCustomDays && (
-                <div style={{ padding: '4px 0.75rem 8px', fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', borderTop: '1px solid var(--border)' }}>
-                  <span style={{ color: 'var(--text-tertiary)' }}>{frequency === 'twice_monthly' ? 'Pay days:' : 'Days of month:'}</span>
-                  <input type="text" value={frequency === 'twice_monthly' ? (customDays || '1,15') : customDays} onChange={e => setCustomDays(e.target.value)} placeholder="e.g. 1, 15" style={{ width: '120px', fontSize: '13px' }} />
-                </div>
-              )}
             </div>
             <div className="modal-btns">
               <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>

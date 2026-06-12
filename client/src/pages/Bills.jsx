@@ -15,6 +15,7 @@ import RecurringRulePanel from '../components/RecurringRulePanel'
 import { MonthPicker } from '../components/DateRangePicker'
 import { CurrencyInput, DateInput } from '../components/FormControls'
 import BillModal from '../components/BillModal'
+import FrequencyPicker, { defaultSchedule as makeDefaultSchedule } from '../components/FrequencyPicker'
 
 const FREQUENCIES = [
   { value: 'monthly',     label: 'Monthly' },
@@ -74,7 +75,7 @@ function ChargeRuleRow({ charge, index, onChange, onRemove, canRemove, started_o
           {isDupLabel&&<span style={{position:'absolute',top:'100%',left:0,fontSize:'10px',color:'var(--red)',whiteSpace:'nowrap',marginTop:'1px'}}>Duplicate label</span>}
         </div>
         <DateInput value={charge.anchor_date||started_on||''} onChange={v=>set('anchor_date',v)} />
-        <select value={charge.frequency} onChange={e=>handleFreqChange(e.target.value)} style={{fontSize:'13px'}}>{FREQUENCIES.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}</select>
+        <FrequencyPicker value={charge.schedule||makeDefaultSchedule(charge.frequency||'monthly')} onChange={s=>onChange(index,{...charge,schedule:s,frequency:s.type})} mode="bills" />
         <select value={charge.account_id||''} onChange={e=>set('account_id',e.target.value||null)} style={{fontSize:'13px'}}><option value="">—</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
         <div style={{display:'flex',justifyContent:'center'}}>{isExisting&&itemHist.length>1&&<button type="button" className={`btn-trend${showHist?' btn-trend--active':''}`} onClick={()=>setShowHist(h=>!h)} title="History"><TrendingUp size={12}/></button>}</div>
         <CurrencyInput value={charge.amount} onChange={v=>set('amount',v)} placeholder="0.00" required inputStyle={{fontSize:'13px'}} />
@@ -145,6 +146,7 @@ function BillChargeModal({ charge, sub, accounts, onClose, onSave, saving }) {
   const [label,      setLabel]      = useState(charge.label || '')
   const [amount,     setAmount]     = useState(String(charge.amount))
   const [frequency,  setFrequency]  = useState(charge.frequency)
+  const [scheduleVal,setScheduleVal]= useState(charge.schedule ? (typeof charge.schedule === 'string' ? JSON.parse(charge.schedule) : charge.schedule) : makeDefaultSchedule(charge.frequency || 'monthly'))
   const [anchorDate, setAnchorDate] = useState(charge.anchor_date || sub.started_on)
   const [accountId,  setAccountId]  = useState(charge.account_id || '')
   const [intentModal,  setIntentModal]  = useState(false)
@@ -156,8 +158,8 @@ function BillChargeModal({ charge, sub, accounts, onClose, onSave, saving }) {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    const uc = { id: charge.id, label, amount: parseFloat(amount), frequency, anchor_date: anchorDate, effective_from: charge.effective_from, account_id: accountId || null }
-    const oc = sub.charges.filter(c => !c.effective_to && c.id !== charge.id).map(c => ({ id: c.id, label: c.label, amount: c.amount, frequency: c.frequency, anchor_date: c.anchor_date, effective_from: c.effective_from, account_id: c.account_id || null }))
+    const uc = { id: charge.id, label, amount: parseFloat(amount), frequency, schedule: scheduleVal, anchor_date: anchorDate, effective_from: charge.effective_from, account_id: accountId || null }
+    const oc = sub.charges.filter(c => !c.effective_to && c.id !== charge.id).map(c => ({ id: c.id, label: c.label, amount: c.amount, frequency: c.frequency, schedule: c.schedule, anchor_date: c.anchor_date, effective_from: c.effective_from, account_id: c.account_id || null }))
     const fd = { name: sub.name, description: sub.description || sub.notes || '', parent_category_id: sub.parent_category_id, color: sub.color, account_id: sub.account_id, status: sub.status, pause_until: sub.pause_until, started_on: sub.started_on, notes: sub.notes || '', charges: [...oc, uc] }
     if (isDirty) { setPendingForm({ formData: fd, updatedCharge: uc }); setIntentModal(true) } else onClose()
   }
@@ -167,12 +169,12 @@ function BillChargeModal({ charge, sub, accounts, onClose, onSave, saving }) {
   }
 
   const colStyle = { fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-tertiary)' }
-  const COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px)'
+  const COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,1.5fr) minmax(130px,155px) minmax(180px,1fr)'
 
   return (
     <>
       <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentModal && onClose()}>
-        <div className="modal" style={{ maxWidth: '860px' }}>
+        <div className="modal" style={{ maxWidth: '960px' }}>
           <h3 className="modal-title" style={{ marginBottom: '2px' }}>Edit Charge Rule</h3>
           <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', marginBottom: '12px' }}>{sub.name}</p>
           <form id="charge-form" onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -190,9 +192,11 @@ function BillChargeModal({ charge, sub, accounts, onClose, onSave, saving }) {
                 </select>
                 <input type="text" value={label} onChange={e => setLabel(e.target.value)} placeholder="Label" required style={{ fontSize: '13px' }} />
                 <DateInput value={anchorDate} onChange={setAnchorDate} />
-                <select value={frequency} onChange={e => setFrequency(e.target.value)} style={{ fontSize: '13px' }}>
-                  {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                </select>
+                <FrequencyPicker
+                  value={scheduleVal}
+                  onChange={s => { setScheduleVal(s); setFrequency(s.type) }}
+                  mode="bills"
+                />
               </div>
             </div>
             <div className="modal-btns">

@@ -100,15 +100,15 @@ router.post('/', (req, res) => {
 
     const insertSchedule = db.prepare(`
       INSERT INTO income_schedules
-        (income_id, user_id, label, amount, frequency, custom_days, anchor_date, effective_from, account_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (income_id, user_id, label, amount, frequency, custom_days, anchor_date, effective_from, account_id, schedule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     for (const s of schedules) {
       const scheduleAccountId = s.account_id || account_id || null
       insertSchedule.run(incomeId, userId, s.label, parseFloat(s.amount),
         s.frequency, s.custom_days || null,
         s.anchor_date || started_on, s.effective_from || started_on,
-        scheduleAccountId)
+        scheduleAccountId, s.schedule ? JSON.stringify(s.schedule) : null)
     }
   })()
 
@@ -208,11 +208,13 @@ router.put('/:id', (req, res) => {
     if (intent.intent === 'correction') {
       // UPDATE in place — rewrite history (including label)
       db.prepare(`
-        UPDATE income_schedules SET label = ?, amount = ?, frequency = ?, anchor_date = ?, account_id = ?
+        UPDATE income_schedules SET label = ?, amount = ?, frequency = ?, anchor_date = ?, account_id = ?, schedule = ?
         WHERE id = ?
       `).run(updated.label || oldSchedule.label, parseFloat(updated.amount), updated.frequency,
              updated.anchor_date || oldSchedule.anchor_date,
-             updated.account_id || null, oldSchedule.id)
+             updated.account_id || null,
+             updated.schedule ? JSON.stringify(updated.schedule) : (oldSchedule.schedule || null),
+             oldSchedule.id)
       // Also sync the linked budget_category name if label changed
       if (updated.label && updated.label !== oldSchedule.label && oldSchedule.budget_category_id) {
         db.prepare('UPDATE budget_categories SET category = ? WHERE id = ? AND user_id = ?')
@@ -241,12 +243,13 @@ router.put('/:id', (req, res) => {
       db.prepare(`
         INSERT INTO income_schedules
           (income_id, user_id, label, amount, frequency, custom_days, anchor_date,
-           effective_from, budget_category_id, account_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           effective_from, budget_category_id, account_id, schedule)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(incomeId, userId, updated.label || oldSchedule.label, parseFloat(updated.amount),
              updated.frequency || oldSchedule.frequency,
              oldSchedule.custom_days, updated.anchor_date || oldSchedule.anchor_date,
-             effectiveFrom, oldSchedule.budget_category_id, updated.account_id || null)
+             effectiveFrom, oldSchedule.budget_category_id, updated.account_id || null,
+             updated.schedule ? JSON.stringify(updated.schedule) : (oldSchedule.schedule || null))
       // Sync budget_category name if label changed
       if (updated.label && updated.label !== oldSchedule.label && oldSchedule.budget_category_id) {
         db.prepare('UPDATE budget_categories SET category = ? WHERE id = ? AND user_id = ?')
@@ -273,8 +276,8 @@ router.put('/:id', (req, res) => {
   if (newSchedules.length > 0) {
     const insertSchedule = db.prepare(`
       INSERT INTO income_schedules
-        (income_id, user_id, label, amount, frequency, custom_days, anchor_date, effective_from, account_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (income_id, user_id, label, amount, frequency, custom_days, anchor_date, effective_from, account_id, schedule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     db.transaction(() => {
       for (const s of newSchedules) {
@@ -282,7 +285,8 @@ router.put('/:id', (req, res) => {
           s.frequency, s.custom_days || null,
           s.anchor_date || income.started_on,
           s.effective_from || income.started_on,
-          s.account_id || null)
+          s.account_id || null,
+          s.schedule ? JSON.stringify(s.schedule) : null)
       }
     })()
 
@@ -411,13 +415,14 @@ router.post('/:id/amount-change', (req, res) => {
     const r = db.prepare(`
       INSERT INTO income_schedules
         (income_id, user_id, label, amount, frequency, custom_days, anchor_date,
-         effective_from, budget_category_id, account_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         effective_from, budget_category_id, account_id, schedule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(incomeId, userId, oldSchedule.label, parseFloat(new_amount),
            new_frequency || oldSchedule.frequency,
            oldSchedule.custom_days, oldSchedule.anchor_date,
            effective_from, oldSchedule.budget_category_id,
-           new_account_id !== undefined ? (new_account_id || null) : oldSchedule.account_id)
+           new_account_id !== undefined ? (new_account_id || null) : oldSchedule.account_id,
+           oldSchedule.schedule || null)
     newScheduleId = r.lastInsertRowid
   })()
 

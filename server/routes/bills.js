@@ -92,12 +92,13 @@ router.post('/', (req, res) => {
     // Insert charge rules (without budget_category_id yet)
     const insertCharge = db.prepare(`
       INSERT INTO bill_charges
-        (bill_id, user_id, label, amount, frequency, anchor_date, effective_from)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+        (bill_id, user_id, label, amount, frequency, anchor_date, effective_from, schedule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
     for (const c of charges) {
       insertCharge.run(subId, userId, c.label, parseFloat(c.amount), c.frequency,
-                       c.anchor_date || started_on, c.effective_from || started_on)
+                       c.anchor_date || started_on, c.effective_from || started_on,
+                       c.schedule ? JSON.stringify(c.schedule) : null)
     }
   })()
 
@@ -199,11 +200,13 @@ router.put('/:id', (req, res) => {
 
     if (intent.intent === 'correction') {
       db.prepare(`
-        UPDATE bill_charges SET label = ?, amount = ?, frequency = ?, anchor_date = ?, account_id = ?
+        UPDATE bill_charges SET label = ?, amount = ?, frequency = ?, anchor_date = ?, account_id = ?, schedule = ?
         WHERE id = ?
       `).run(updated.label || oldCharge.label, parseFloat(updated.amount), updated.frequency,
              updated.anchor_date || oldCharge.anchor_date,
-             updated.account_id || null, oldCharge.id)
+             updated.account_id || null,
+             updated.schedule ? JSON.stringify(updated.schedule) : (oldCharge.schedule || null),
+             oldCharge.id)
       // Sync label change to linked budget category name
       if (updated.label && updated.label !== oldCharge.label && oldCharge.budget_category_id) {
         try {
@@ -233,12 +236,13 @@ router.put('/:id', (req, res) => {
       db.prepare(`
         INSERT INTO bill_charges
           (bill_id, user_id, label, amount, frequency, anchor_date,
-           effective_from, budget_category_id, account_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           effective_from, budget_category_id, account_id, schedule)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(subId, userId, updated.label || oldCharge.label, parseFloat(updated.amount),
              updated.frequency || oldCharge.frequency,
              updated.anchor_date || oldCharge.anchor_date,
-             effectiveFrom, oldCharge.budget_category_id, updated.account_id || null)
+             effectiveFrom, oldCharge.budget_category_id, updated.account_id || null,
+             updated.schedule ? JSON.stringify(updated.schedule) : (oldCharge.schedule || null))
       // Sync label change to linked budget category name
       if (updated.label && updated.label !== oldCharge.label && oldCharge.budget_category_id) {
         try {
@@ -263,8 +267,8 @@ router.put('/:id', (req, res) => {
   if (newCharges.length > 0) {
     const insertCharge = db.prepare(`
       INSERT INTO bill_charges
-        (bill_id, user_id, label, amount, frequency, anchor_date, effective_from, account_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (bill_id, user_id, label, amount, frequency, anchor_date, effective_from, account_id, schedule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     db.transaction(() => {
       for (const c of newCharges) {
@@ -272,7 +276,8 @@ router.put('/:id', (req, res) => {
           c.frequency,
           c.anchor_date || sub.started_on,
           c.effective_from || sub.started_on,
-          c.account_id || null)
+          c.account_id || null,
+          c.schedule ? JSON.stringify(c.schedule) : null)
       }
     })()
 
@@ -411,11 +416,11 @@ router.post('/:id/price-change', (req, res) => {
     const r = db.prepare(`
       INSERT INTO bill_charges
         (bill_id, user_id, label, amount, frequency, anchor_date,
-         effective_from, budget_category_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         effective_from, budget_category_id, schedule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(subId, userId, oldCharge.label, parseFloat(new_amount),
            oldCharge.frequency, oldCharge.anchor_date, effective_from,
-           oldCharge.budget_category_id)
+           oldCharge.budget_category_id, oldCharge.schedule || null)
     newChargeId = r.lastInsertRowid
   })()
 

@@ -5,6 +5,8 @@ import ColorPicker from './ColorPicker'
 import ChangeIntentModal from './ChangeIntentModal'
 import { CurrencyInput, DateInput } from './FormControls'
 import { formatCurrency } from '../utils'
+import { scheduleLabel, occursInMonth, occurrencesPerMonth } from '../scheduleUtils'
+import FrequencyPicker, { defaultSchedule } from './FrequencyPicker'
 
 const FREQUENCIES = [
   { value: 'monthly',     label: 'Monthly'     },
@@ -27,13 +29,14 @@ function chargeMonthly(c) {
 
 const defaultCharge = (startedOn) => ({
   label: '', amount: '', frequency: 'monthly',
+  schedule: defaultSchedule('monthly'),
   anchor_date:    startedOn || new Date().toISOString().slice(0, 10),
   effective_from: startedOn || new Date().toISOString().slice(0, 10),
 })
 
 // Schedule table column layout
 // Amount | Account | Label | Started On | Frequency | −/+
-const SCHED_COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px) 28px'
+const SCHED_COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,1.5fr) minmax(130px,155px) minmax(180px,1fr) 28px'
 const SCHED_HDRS = ['Amount', 'Account', 'Label', 'Started On', 'Frequency', '']
 
 const headerStyle = {
@@ -89,9 +92,11 @@ function ChargeRow({ charge, index, isSingle, name, onChange, onRemove, canRemov
         {/* Started On */}
         <DateInput value={charge.anchor_date || started_on || ''} onChange={v => set('anchor_date', v)} />
         {/* Frequency */}
-        <select value={charge.frequency} onChange={e => set('frequency', e.target.value)} style={{ fontSize: '13px' }}>
-          {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-        </select>
+        <FrequencyPicker
+          value={charge.schedule || defaultSchedule(charge.frequency || 'monthly')}
+          onChange={s => onChange(index, { ...charge, schedule: s, frequency: s.type })}
+          mode="bills"
+        />
         {/* −/history */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {isExisting && itemHist.length > 1 ? (
@@ -263,7 +268,7 @@ export default function BillModal({ initial, categories, accounts, onClose, onSa
   return (
     <>
       <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentQueue && onClose()}>
-        <div className="modal" style={{ maxWidth: '860px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal" style={{ maxWidth: '960px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexShrink: 0 }}>

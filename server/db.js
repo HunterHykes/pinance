@@ -242,6 +242,7 @@ const migrations = [
   `ALTER TABLE budget_categories ADD COLUMN bill_id INTEGER REFERENCES bills(id) ON DELETE CASCADE`,
   `ALTER TABLE bill_charges ADD COLUMN budget_category_id INTEGER REFERENCES budget_categories(id)`,
   `ALTER TABLE bill_charges ADD COLUMN account_id INTEGER REFERENCES accounts(id)`,
+  `ALTER TABLE bill_charges ADD COLUMN schedule TEXT`,
   `CREATE TABLE IF NOT EXISTS account_preferences (
     id           INTEGER PRIMARY KEY,
     user_id      INTEGER NOT NULL REFERENCES users(id),
@@ -310,6 +311,7 @@ const migrations = [
     account_id         INTEGER REFERENCES accounts(id)
   )`,
   `ALTER TABLE income_schedules ADD COLUMN account_id INTEGER REFERENCES accounts(id)`,
+  `ALTER TABLE income_schedules ADD COLUMN schedule TEXT`,
   // original_account_id: set at merge time via COALESCE — intentionally no FK so the
   // reference survives account deletion, preserving the historical audit trail.
   `ALTER TABLE transactions ADD COLUMN original_account_id INTEGER`,

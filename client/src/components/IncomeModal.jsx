@@ -5,6 +5,8 @@ import ColorPicker from './ColorPicker'
 import ChangeIntentModal from './ChangeIntentModal'
 import { CurrencyInput, DateInput } from './FormControls'
 import { formatCurrency } from '../utils'
+import { scheduleLabel, occursInMonth } from '../scheduleUtils'
+import FrequencyPicker, { defaultSchedule as makeDefaultSchedule } from './FrequencyPicker'
 
 const FREQUENCIES = [
   { value: 'weekly',        label: 'Weekly'        },
@@ -34,6 +36,7 @@ function deriveAnchorDate(frequency, startedOn) { return startedOn || new Date()
 
 const defaultSchedule = (startedOn) => ({
   label: '', amount: '', frequency: 'biweekly',
+  schedule: makeDefaultSchedule('biweekly'),
   anchor_date:    startedOn || new Date().toISOString().slice(0, 10),
   effective_from: startedOn || new Date().toISOString().slice(0, 10),
   custom_days: null,
@@ -41,7 +44,7 @@ const defaultSchedule = (startedOn) => ({
 
 // Schedule table column layout
 // Amount | Account | Label | Started On | Frequency | −/+
-const SCHED_COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,2fr) minmax(130px,160px) minmax(140px,160px) 28px'
+const SCHED_COLS = 'minmax(120px,130px) minmax(130px,1fr) minmax(130px,1.5fr) minmax(130px,155px) minmax(180px,1fr) 28px'
 const SCHED_HDRS = ['Amount', 'Account', 'Label', 'Started On', 'Frequency', '']
 
 const headerStyle = {
@@ -57,8 +60,6 @@ function ScheduleRow({ schedule, index, isSingle, name, onChange, onRemove, canR
   const isExisting = !!schedule.id
   const isDirty    = isExisting && schedule._dirty
   const set = (field, val) => onChange(index, { ...schedule, [field]: val })
-
-  const needsCustomDays = schedule.frequency === 'custom_days' || schedule.frequency === 'twice_monthly'
 
   const itemHist = useMemo(() =>
     (!schedule.budget_category_id || !allSchedules) ? [] :
@@ -101,9 +102,11 @@ function ScheduleRow({ schedule, index, isSingle, name, onChange, onRemove, canR
         {/* Started On */}
         <DateInput value={schedule.anchor_date || started_on || ''} onChange={v => set('anchor_date', v)} />
         {/* Frequency */}
-        <select value={schedule.frequency} onChange={e => handleFreqChange(e.target.value)} style={{ fontSize: '13px' }}>
-          {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-        </select>
+        <FrequencyPicker
+          value={schedule.schedule || makeDefaultSchedule(schedule.frequency || 'biweekly')}
+          onChange={s => onChange(index, { ...schedule, schedule: s, frequency: s.type })}
+          mode="income"
+        />
         {/* −/history */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {isExisting && itemHist.length > 1 ? (
@@ -122,20 +125,6 @@ function ScheduleRow({ schedule, index, isSingle, name, onChange, onRemove, canR
           ) : null}
         </div>
       </div>
-      {/* Custom days sub-row */}
-      {needsCustomDays && (
-        <div style={{ padding: '4px 0.75rem 8px', fontSize: '12px', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ color: 'var(--text-tertiary)' }}>
-            {schedule.frequency === 'twice_monthly' ? 'Pay days:' : 'Days of month:'}
-          </span>
-          <input type="text"
-            value={schedule.frequency === 'twice_monthly' ? (schedule.custom_days || '1,15') : (schedule.custom_days || '')}
-            onChange={e => set('custom_days', e.target.value)}
-            placeholder="e.g. 1, 15"
-            style={{ width: '120px', fontSize: '13px' }}
-          />
-        </div>
-      )}
       {/* History sub-rows */}
       {showHist && itemHist.length > 0 && (
         <div style={{ padding: '4px 0.75rem 8px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
@@ -287,7 +276,7 @@ export default function IncomeModal({ initial, categories, accounts, onClose, on
   return (
     <>
       <div className="modal-bg" onClick={e => e.target === e.currentTarget && !intentQueue && onClose()}>
-        <div className="modal" style={{ maxWidth: '860px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal" style={{ maxWidth: '960px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
 
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', flexShrink: 0 }}>
